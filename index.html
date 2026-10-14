@@ -55,10 +55,9 @@
   </script>
   <script type="module">
     import * as THREE from 'three';
-    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     const scene = new THREE.Scene();
-    // Warmer sky and soft fog (Grounded-inspired)
     scene.background = new THREE.Color(0xb8d4e8);
     scene.fog = new THREE.Fog(0xb8d4e8, 50, 140);
 
@@ -68,7 +67,6 @@
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // Warmer, softer lights
     const hemi = new THREE.HemisphereLight(0xfff5e6, 0x7a9a6a, 0.7);
     scene.add(hemi);
     const dir = new THREE.DirectionalLight(0xffe8c8, 0.9);
@@ -76,7 +74,6 @@
     dir.castShadow = true;
     scene.add(dir);
 
-    // Warmer ground
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
       new THREE.MeshLambertMaterial({ color: 0x5a8a4a })
@@ -85,7 +82,6 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Lake (softer blue)
     const lake = new THREE.Mesh(
       new THREE.CircleGeometry(18, 32),
       new THREE.MeshLambertMaterial({ color: 0x4aa3d8, transparent: true, opacity: 0.75 })
@@ -94,7 +90,7 @@
     lake.position.set(15, 0.05, 10);
     scene.add(lake);
 
-    // Campsite objects (warmer tones)
+    // Campsite simple props (still boxes for now)
     function box(w, h, d, color, x, y, z) {
       const m = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, d),
@@ -106,23 +102,52 @@
       scene.add(m);
       return m;
     }
-    box(1.2, 0.3, 1.2, 0x8B5a2b, -2, 0.15, -3); // table
-    box(0.8, 1.2, 0.8, 0x6b4e31, -4, 0.6, -5); // tent-ish
-    box(0.4, 1.5, 0.4, 0x7a5c3a, 1, 0.75, -4); // tree stump
-    // Trees (slightly warmer greens)
-    for (let i = 0; i < 20; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const dist = 25 + Math.random() * 40;
-      const x = Math.cos(ang) * dist;
-      const z = Math.sin(ang) * dist;
-      const trunk = box(0.4, 4 + Math.random()*2, 0.4, 0x6b4e31, x, 2, z);
-      const leaves = new THREE.Mesh(
-        new THREE.ConeGeometry(2, 4, 8),
-        new THREE.MeshLambertMaterial({ color: 0x3d7a3d })
-      );
-      leaves.position.set(x, 5.5, z);
-      scene.add(leaves);
+    box(1.2, 0.3, 1.2, 0x8B5a2b, -2, 0.15, -3);
+    box(0.8, 1.2, 0.8, 0x6b4e31, -4, 0.6, -5);
+
+    // Asset list – place all for variety. Paths relative to index.html
+    const assetFiles = [
+      'assets/trees/broadleaf_mature.glb',
+      'assets/trees/broadleaf_mature_bushy.glb',
+      'assets/trees/broadleaf_leaning.glb',
+      'assets/trees/broadleaf_broken_regrowth.glb',
+      'assets/trees/broadleaf_sidebranches.glb',
+      'assets/trees/broadleaf_wide_low.glb',
+      'assets/trees/pine_mature.glb',
+      'assets/trees/pine_windswept.glb',
+      'assets/trees/pine_mature_tall_straight_dense.glb',
+      'assets/rocks/rock.glb',
+      'assets/rocks/rock_cluster.glb',
+      'assets/wood/log.glb',
+      'assets/wood/stump.glb',
+      'assets/wood/stump_large.glb'
+    ];
+
+    const loader = new GLTFLoader();
+    function placeAssets() {
+      assetFiles.forEach((path, i) => {
+        loader.load(path, (gltf) => {
+          const model = gltf.scene;
+          // Random placement around the campsite (avoid lake center)
+          const ang = Math.random() * Math.PI * 2;
+          const dist = 12 + Math.random() * 50;
+          const x = Math.cos(ang) * dist;
+          const z = Math.sin(ang) * dist;
+          model.position.set(x, 0, z);
+          model.rotation.y = Math.random() * Math.PI * 2;
+          // Scale a bit if needed (adjust later)
+          model.scale.setScalar(1);
+          model.traverse(child => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scene.add(model);
+        }, undefined, (err) => console.warn('Failed to load', path, err));
+      });
     }
+    placeAssets();
 
     // Player
     const player = new THREE.Mesh(
@@ -133,12 +158,11 @@
     player.castShadow = true;
     scene.add(player);
 
-    // Camera third-person offset
     const camOffset = new THREE.Vector3(0, 3.5, 6);
     let yaw = 0;
     let pitch = 0.2;
 
-    // Zombies (simple capsules)
+    // Zombies
     const zombies = [];
     const zombieCountEl = document.getElementById('zombieCount');
     let remaining = 5;
@@ -158,18 +182,14 @@
     spawnZombie(4, -10);
     spawnZombie(12, -4);
     spawnZombie(-10, -6);
+    function updateCount() { zombieCountEl.textContent = remaining; }
     updateCount();
-
-    function updateCount() {
-      zombieCountEl.textContent = remaining;
-    }
 
     // Input
     const keys = {};
     let moveX = 0, moveZ = 0;
     let lookX = 0, lookY = 0;
 
-    // Joysticks
     function setupJoystick(joyEl, stickEl, onMove) {
       let active = false, startX, startY;
       const max = 50;
@@ -198,14 +218,13 @@
 
     setupJoystick(document.getElementById('leftJoy'), document.getElementById('leftStick'), (x, y) => {
       moveX = x;
-      moveZ = -y; // up is negative y on screen but forward
+      moveZ = -y;
     });
     setupJoystick(document.getElementById('rightJoy'), document.getElementById('rightStick'), (x, y) => {
       lookX = x;
       lookY = y;
     });
 
-    // Shoot on right side tap (or click)
     renderer.domElement.addEventListener('pointerdown', e => {
       if (e.clientX > window.innerWidth * 0.5) shoot();
     });
@@ -231,7 +250,6 @@
       }
     }
 
-    // Keyboard for desktop
     window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
     window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
@@ -243,32 +261,27 @@
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
 
-      // Desktop movement
       let dx = moveX, dz = moveZ;
       if (keys['w'] || keys['arrowup']) dz += 1;
       if (keys['s'] || keys['arrowdown']) dz -= 1;
       if (keys['a'] || keys['arrowleft']) dx -= 1;
       if (keys['d'] || keys['arrowright']) dx += 1;
 
-      // Look
       yaw -= lookX * 2.5 * dt;
       pitch = Math.max(-0.8, Math.min(0.6, pitch - lookY * 1.8 * dt));
       if (keys['q']) yaw += 1.5 * dt;
       if (keys['e']) yaw -= 1.5 * dt;
 
-      // Move player
       const speed = 6;
       const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
       const move = forward.multiplyScalar(dz).add(right.multiplyScalar(dx)).normalize().multiplyScalar(speed * dt);
       if (dx || dz) player.position.add(move);
 
-      // Camera
       const camPos = player.position.clone().add(camOffset.clone().applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
       camera.position.copy(camPos);
       camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.4, 0)));
 
-      // Zombies chase
       zombies.forEach(z => {
         const toPlayer = player.position.clone().sub(z.position);
         toPlayer.y = 0;
@@ -294,7 +307,6 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Hide intro message after a bit
     setTimeout(() => {
       const m = document.getElementById('msg');
       if (m.textContent.includes('campsite')) m.textContent = 'Check your phone... messages are coming in.';
