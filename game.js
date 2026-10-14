@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // ================= Config / RNG =================
 const Q = new URLSearchParams(location.search);
@@ -573,18 +574,203 @@ async function loadWorld() {
   window.__bamReady = true;
 }
 
-// ================= Player / zombies / gameplay =================
-var player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.2, 4, 8), new THREE.MeshLambertMaterial({ color: 0x3366aa }));
-player.position.set(CAMP.x - 3.2, 0, CAMP.z - 3.4); player.castShadow = true; scene.add(player);
-const camOffset = new THREE.Vector3(0, 3.2, 6);
-let yaw = -2.25, pitch = 0.16;
+// ================= Characters (Quaternius Ultimate Modular Men, CC0) =================
+// Each character's 4 skinned parts (feet/legs/body/head) are baked into ONE SkinnedMesh with vertex colours
+// (1 draw call per character). A per-vertex `part` attribute (0 feet,1 legs,2 body,3 head) + per-limb bones
+// keep the door open for dismemberment later.
+const PART_ID = n => /feet/i.test(n) ? 0 : /leg|pants/i.test(n) ? 1 : /head/i.test(n) ? 3 : 2;
+function bakeCharacter(root, recolor) {
+  root.updateMatrixWorld(true);
+  const meshes = []; root.traverse(o => { if (o.isSkinnedMesh) meshes.push(o); });
+  const skel0 = meshes[0].skeleton, bones = skel0.bones, ibm0 = skel0.boneInverses, inv0 = ibm0.map(m => m.clone().invert());
+  const geos = [], v = new THREE.Vector3(), n3 = new THREE.Matrix3();
+  for (const m of meshes) {
+    const g = toFloat(m.geometry.clone());
+    const C = bones.map((b, j) => { const jj = m.skeleton.bones.indexOf(b); return inv0[j].clone().multiply(m.skeleton.boneInverses[jj]).multiply(m.bindMatrix); });
+    const remap = m.skeleton.bones.map(b => bones.indexOf(b));
+    const P = g.attributes.position, N = g.attributes.normal, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+    for (let i = 0; i < P.count; i++) {
+      for (let k = 0; k < 4; k++) SI.setComponent(i, k, remap[SI.getComponent(i, k)]);
+      let best = 0; for (let k = 1; k < 4; k++) if (SW.getComponent(i, k) > SW.getComponent(i, best)) best = k;
+      const M = C[SI.getComponent(i, best)];
+      v.fromBufferAttribute(P, i).applyMatrix4(M); P.setXYZ(i, v.x, v.y, v.z);
+      if (N) { n3.getNormalMatrix(M); v.fromBufferAttribute(N, i).applyMatrix3(n3).normalize(); N.setXYZ(i, v.x, v.y, v.z); }
+    }
+    const col = recolor(m.material); const ca = new Float32Array(P.count * 3); for (let i = 0; i < P.count; i++) ca.set([col.r, col.g, col.b], i * 3);
+    g.setAttribute('color', new THREE.BufferAttribute(ca, 3));
+    g.setAttribute('part', new THREE.BufferAttribute(new Float32Array(P.count).fill(PART_ID(m.name + ' ' + (m.parent?.name || ''))), 1));
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color', 'skinIndex', 'skinWeight', 'part'].includes(k)) g.deleteAttribute(k);
+    geos.push(g);
+  }
+  meshes.forEach(m => m.removeFromParent());
+  const sm = new THREE.SkinnedMesh(mergeGeometries(geos), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  sm.bind(new THREE.Skeleton(bones, ibm0), new THREE.Matrix4());
+  sm.castShadow = true; sm.frustumCulled = false; sm.name = 'body';
+  bones[0].parent.add(sm);
+  const box = new THREE.Box3().setFromBufferAttribute(sm.geometry.attributes.position);
+  return { root, height: box.max.y - box.min.y, minY: box.min.y };
+}
+const ZOMBIE_SKIN = [new THREE.Color(0x7d9a52), new THREE.Color(0x8fa06a), new THREE.Color(0x6e8a58), new THREE.Color(0x9aa078)];
+function zombieRecolor(skin) {
+  return mat => { const c = mat.color.clone(), nm = mat.name || '';
+    if (/skin/i.test(nm)) return skin.clone().convertSRGBToLinear();
+    if (/eye$/i.test(nm)) return new THREE.Color(0.55, 0.08, 0.04);
+    const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, hsl.s * 0.45, hsl.l * 0.8); // faded, dirty clothes
+    return c.lerp(new THREE.Color(0.05, 0.035, 0.02), 0.25); };
+}
+const CHAR = { player: null, zombies: [], clips: null };
+const Z_TYPES = ['casual', 'farmer', 'worker'];
+async function loadCharacters() {
+  const [pl, axe, ...zs] = await Promise.all([loader.loadAsync('assets/characters/adventurer.glb'), loader.loadAsync('assets/characters/axe.glb'), ...Z_TYPES.map(n => loader.loadAsync('assets/characters/' + n + '.glb'))]);
+  CHAR.clips = pl.animations;
+  CHAR.player = { ...bakeCharacter(pl.scene, m => m.color.clone()), gltf: pl, axe: axe.scene };
+  zs.forEach((g, i) => { CHAR.zombies.push({ gltf: g, skinIdx: i }); });
+}
+const clip = (name) => THREE.AnimationClip.findByName(CHAR.clips, name);
 
-const zombies = []; const zombieCountEl = document.getElementById('zombieCount'); let remaining = 5;
-const zMat = () => new THREE.MeshLambertMaterial({ color: 0x6f7f5a });
-function spawnZombie(x, z) { const zom = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.4, 4, 8), zMat()); zom.position.set(x, heightAt(x, z) + 1.1, z); zom.castShadow = true; zom.userData = { speed: 1.2 + Math.random() * 0.6, health: 2, isZombie: true }; scene.add(zom); zombies.push(zom); }
-// spawn at forest edges 22-40 m from camp, never in the lake
-{ let n = 0; for (let i = 0; i < 4000 && n < 5; i++) { const a = rand() * 6.283, d = rr(22, 40); const x = CAMP.x + Math.cos(a) * d, z = CAMP.z + Math.sin(a) * d; const m = forestMask(x, z); if (m > 0.2 && m < 0.6 && lakeN(x, z) > 1.3 && !colliders.some(c => Math.hypot(x - c.x, z - c.z) < c.r + 0.6)) { spawnZombie(x, z); n++; } } }
-function updateCount() { zombieCountEl.textContent = remaining; } updateCount();
+// ---------- generic animated actor ----------
+class Actor {
+  constructor(srcRoot, height, minY, targetH) {
+    this.model = SkeletonUtils.clone(srcRoot);
+    const s = targetH / height; this.model.scale.setScalar(s); this.model.position.y = -minY * s;
+    this.obj = new THREE.Group(); this.obj.add(this.model); scene.add(this.obj);
+    this.mixer = new THREE.AnimationMixer(this.model); this.actions = {}; this.cur = null; this.acc = 0;
+    this.body = null; this.model.traverse(o => { if (o.isSkinnedMesh) this.body = o; });
+    this.bones = {}; this.model.traverse(o => { if (o.isBone) this.bones[o.name.replace(/[^A-Za-z0-9]/g, '')] = o; });
+  }
+  act(name) { if (!this.actions[name]) { const c = clip(name); if (!c) return null; this.actions[name] = this.mixer.clipAction(c); } return this.actions[name]; }
+  play(name, { fade = 0.2, once = false, speed = 1 } = {}) {
+    const a = this.act(name); if (!a) return; if (this.cur === a && !once) { a.timeScale = speed; return a; }
+    a.reset(); a.timeScale = speed; a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = once;
+    a.enabled = true; a.setEffectiveWeight(1); if (this.cur && this.cur !== a) this.cur.crossFadeTo(a, fade, false); a.play(); this.cur = a; this.curName = name; return a;
+  }
+  tickAnim(dt, dist) { // throttle animation for distant actors
+    this.acc += dt; const every = dist > 45 ? 4 : dist > 22 ? 2 : 1; this.frame = (this.frame || 0) + 1;
+    if (dist > 90) { this.acc = 0; return false; }
+    if (this.frame % every) return false; this.mixer.update(this.acc); this.acc = 0; return true;
+  }
+}
+
+// ---------- player ----------
+var player = new THREE.Group(); player.position.set(CAMP.x - 3.2, 0, CAMP.z - 3.4); scene.add(player);
+let hero = null, heroFacing = -2.25 + Math.PI, attackT = -1, attackHit = false, heroHurtT = 0, dead = false;
+const camOffset = new THREE.Vector3(0, 1.9, 3.6);
+let yaw = -2.25, pitch = 0.12;
+function setupHero() {
+  const P = CHAR.player; hero = new Actor(P.root, P.height, P.minY, 1.8); player.add(hero.obj); scene.remove(hero.obj); player.add(hero.obj);
+  hero.body.material.color.set(0xffffff);
+  const hand = hero.bones['WristR'] || hero.bones['LowerArmR'];
+  if (hand) { hero.obj.updateMatrixWorld(true); const ws = hand.getWorldScale(new THREE.Vector3()).x;
+    const a = P.axe.clone(); const b = new THREE.Box3().setFromObject(a), sz = b.getSize(new THREE.Vector3()); const s = 0.8 / Math.max(sz.x, sz.y, sz.z) / ws;
+    a.scale.setScalar(s); a.rotation.set(0, 0, Math.PI / 2); a.position.set(0, 0.1 / ws, 0); a.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } }); hand.add(a); window.__axe = a; }
+  hero.play('Idle');
+}
+
+// ---------- zombies ----------
+const zombies = []; const zombieCountEl = document.getElementById('zombieCount'); let remaining = 0, wave = 0;
+const zBase = []; // baked variants (type x skin)
+function zombieVariant(i) {
+  if (!zBase[i]) { const z = CHAR.zombies[i % CHAR.zombies.length]; const root = SkeletonUtils.clone(z.gltf.scene); zBase[i] = bakeCharacter(root, zombieRecolor(ZOMBIE_SKIN[i % ZOMBIE_SKIN.length])); }
+  return zBase[i];
+}
+function spawnZombie(x, z) {
+  const vi = Math.floor(rand() * 6), V = zombieVariant(vi);
+  const runner = rand() < 0.15;
+  const a = new Actor(V.root, V.height, V.minY, rr(1.65, 1.95));
+  a.body.material = a.body.material.clone(); a.body.material.color.setScalar(rr(0.82, 1.05));
+  a.obj.position.set(x, heightAt(x, z), z); a.obj.rotation.y = rand() * 6.28;
+  Object.assign(a, { hp: runner ? 2 : 3, speed: runner ? rr(2.6, 3.2) : rr(0.8, 1.35), runner, state: 'idle', stateT: 0, atkCd: 0, hitT: 0, lean: rr(0.15, 0.35), armUp: rr(0.75, 1.1), wander: rand() * 6.28, kb: new THREE.Vector3() });
+  a.play('Idle_Neutral', { speed: rr(0.6, 0.9) }); a.mixer.setTime(rand() * 3);
+  zombies.push(a); remaining++; updateCount();
+}
+function spawnWave() {
+  wave++; const n = Math.min(4 + wave * 2, 12); let k = 0;
+  for (let i = 0; i < 4000 && k < n; i++) { const ang = rand() * 6.283, d = rr(24, 42); const x = player.position.x + Math.cos(ang) * d, z = player.position.z + Math.sin(ang) * d;
+    if (Math.hypot(x, z) > WORLD_R - 8 || lakeN(x, z) < 1.25 || colliders.some(c => Math.hypot(x - c.x, z - c.z) < c.r + 0.6)) continue; spawnZombie(x, z); k++; }
+  msg(wave === 1 ? 'Something is moving in the trees...' : `Wave ${wave}: they keep coming.`);
+}
+function updateCount() { zombieCountEl.textContent = remaining; }
+const msgEl = document.getElementById('msg'); function msg(t) { msgEl.textContent = t; }
+
+// procedural zombie posture on top of the clip: forward lean + reaching arms (axis-agnostic, world space)
+const _qa = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _ax = new THREE.Vector3();
+function bendBone(bone, axisWorld, ang) { if (!bone) return; bone.parent.getWorldQuaternion(_qp); _ax.copy(axisWorld).applyQuaternion(_qp.invert()); _qa.setFromAxisAngle(_ax, ang); bone.quaternion.premultiply(_qa); }
+function zombiePosture(a, w) {
+  if (w <= 0) return; const ry = a.obj.rotation.y, right = new THREE.Vector3(Math.cos(ry), 0, -Math.sin(ry));
+  a.model.updateMatrixWorld(true);
+  bendBone(a.bones['Torso'] || a.bones['Chest'], right, a.lean * w);
+  bendBone(a.bones['Neck'], right, 0.25 * w);
+  a.model.updateMatrixWorld(true);
+  bendBone(a.bones['UpperArmL'], right, -a.armUp * w); bendBone(a.bones['UpperArmR'], right, -a.armUp * w * 0.9);
+}
+
+// ---------- blood particles (pooled, one draw call) ----------
+const BL = 160, blPos = new Float32Array(BL * 3), blVel = new Float32Array(BL * 3), blLife = new Float32Array(BL); let blNext = 0;
+const blGeo = new THREE.BufferGeometry(); blGeo.setAttribute('position', new THREE.BufferAttribute(blPos, 3));
+const blood = new THREE.Points(blGeo, new THREE.PointsMaterial({ color: 0x8a0e0a, size: 0.09, transparent: true, opacity: 0.95, depthWrite: false })); blood.frustumCulled = false; scene.add(blood);
+for (let i = 0; i < BL; i++) blPos[i * 3 + 1] = -999;
+function bloodBurst(p, dir, n = 18) { for (let k = 0; k < n; k++) { const i = blNext++ % BL; blPos.set([p.x, p.y, p.z], i * 3); blVel.set([dir.x * rr(1, 3) + rr(-1, 1), rr(0.5, 2.5), dir.z * rr(1, 3) + rr(-1, 1)], i * 3); blLife[i] = rr(0.5, 0.9); } }
+function tickBlood(dt) { for (let i = 0; i < BL; i++) { if (blLife[i] <= 0) continue; blLife[i] -= dt; blVel[i * 3 + 1] -= 9.8 * dt; for (let c = 0; c < 3; c++) blPos[i * 3 + c] += blVel[i * 3 + c] * dt; const g = heightAt(blPos[i * 3], blPos[i * 3 + 2]) + 0.02; if (blPos[i * 3 + 1] < g) { blPos[i * 3 + 1] = g; blVel.fill(0, i * 3, i * 3 + 3); } if (blLife[i] <= 0) blPos[i * 3 + 1] = -999; } blGeo.attributes.position.needsUpdate = true; }
+
+// ---------- combat ----------
+const hurtEl = document.getElementById('hurt');
+function heroAttack() {
+  if (!hero || dead || attackT >= 0) return;
+  attackT = 0; attackHit = false; heroFacing = yaw + Math.PI;
+  hero.play('Sword_Slash', { once: true, fade: 0.08, speed: 1.35 });
+}
+function resolveHeroHit() {
+  const f = new THREE.Vector3(Math.sin(heroFacing), 0, Math.cos(heroFacing));
+  for (const z of zombies) { if (z.state === 'dead') continue; const d = z.obj.position.clone().sub(player.position); d.y = 0; const L = d.length();
+    if (L < 2.3 && d.normalize().dot(f) > 0.35) hitZombie(z, f); }
+}
+function hitZombie(z, dir) {
+  z.hp--; bloodBurst(z.obj.position.clone().add(new THREE.Vector3(0, 1.4, 0)), dir);
+  z.kb.copy(dir).multiplyScalar(z.hp > 0 ? 3.2 : 4.5);
+  if (z.hp <= 0) { z.state = 'dead'; z.stateT = 0; z.fallDir = dir.clone(); z.play('Death', { once: true, fade: 0.1, speed: rr(0.9, 1.2) }); remaining--; updateCount();
+    if (remaining <= 0) { msg('Area clear for now. More will come...'); setTimeout(spawnWave, 9000); } }
+  else { z.state = 'hit'; z.stateT = 0; z.play(rand() < 0.5 ? 'HitRecieve' : 'HitRecieve_2', { once: true, fade: 0.06 }); }
+}
+function hurtHero(amount, from) {
+  if (dead) return; health = Math.max(0, health - amount); healthEl.textContent = Math.floor(health); heroHurtT = 0.35;
+  hurtEl.style.opacity = 0.55; setTimeout(() => hurtEl.style.opacity = 0, 160);
+  bloodBurst(player.position.clone().add(new THREE.Vector3(0, 1.3, 0)), from, 10);
+  if (health <= 0) { dead = true; hero.play('Death', { once: true, fade: 0.15 }); msg('You died. Tap to try again.'); setTimeout(() => addEventListener('pointerdown', () => location.reload(), { once: true }), 1500); }
+  else if (attackT < 0) hero.play('HitRecieve', { once: true, fade: 0.06, speed: 1.4 });
+}
+function updateZombie(z, dt, t) {
+  const to = player.position.clone().sub(z.obj.position); to.y = 0; const d = to.length();
+  z.stateT += dt; z.atkCd -= dt;
+  // knockback
+  if (z.kb.lengthSq() > 0.001) { z.obj.position.addScaledVector(z.kb, dt); z.kb.multiplyScalar(Math.max(0, 1 - dt * 7)); }
+  if (z.state === 'dead') {
+    if (z.stateT < 0.9) { const k = Math.min(1, z.stateT / 0.9); z.obj.rotation.x = 0; } // ragdoll-lite: clip falls, small slide along hit dir handled by knockback
+    if (z.stateT > 10) z.obj.position.y -= dt * 0.25;
+    if (z.stateT > 14) { scene.remove(z.obj); zombies.splice(zombies.indexOf(z), 1); }
+    return 0;
+  }
+  if (z.state === 'hit') { if (z.stateT > 0.55) z.state = 'chase'; return 0.3; }
+  if (z.state === 'attack') {
+    if (!z.dealt && z.stateT > 0.45) { z.dealt = true; if (d < 1.9 && !dead) hurtHero(z.runner ? 8 : 12, to.clone().normalize().negate()); }
+    if (z.stateT > 1.1) { z.state = 'chase'; z.atkCd = rr(0.6, 1.2); }
+    face(z, to, dt * 6); return 0.4;
+  }
+  const aware = d < (z.state === 'chase' ? 40 : 20) && !dead;
+  if (aware) {
+    if (z.state !== 'chase') { z.state = 'chase'; z.play(z.runner ? 'Run' : 'Walk', { speed: z.runner ? 0.95 : z.speed * 0.55, fade: 0.4 }); }
+    if (d < 1.5 && z.atkCd <= 0) { z.state = 'attack'; z.stateT = 0; z.dealt = false; z.play(rand() < 0.5 ? 'Punch_Left' : 'Punch_Right', { once: true, fade: 0.12, speed: 0.85 }); return 0.4; }
+    if (d > 1.2) { z.obj.position.addScaledVector(to.normalize(), z.speed * dt); face(z, to, dt * 3); }
+  } else {
+    if (z.state !== 'idle' && z.state !== 'wander') z.state = 'idle';
+    z.wander += (Math.sin(t * 0.3 + z.lean * 50) * 0.5) * dt;
+    if (Math.sin(t * 0.2 + z.armUp * 9) > 0.3) { if (z.curName !== 'Walk') z.play('Walk', { speed: 0.35, fade: 0.6 }); const w = new THREE.Vector3(Math.sin(z.wander), 0, Math.cos(z.wander)); z.obj.position.addScaledVector(w, 0.35 * dt); face(z, w, dt * 2); }
+    else if (z.curName !== 'Idle_Neutral') z.play('Idle_Neutral', { speed: 0.6, fade: 0.6 });
+  }
+  return 1;
+}
+function face(z, dir, k) { const target = Math.atan2(dir.x, dir.z); let dd = target - z.obj.rotation.y; dd = Math.atan2(Math.sin(dd), Math.cos(dd)); z.obj.rotation.y += dd * Math.min(1, k); }
+// zombie-zombie separation (cheap, O(n^2) on <=12)
+function separate() { for (let i = 0; i < zombies.length; i++) for (let j = i + 1; j < zombies.length; j++) { const a = zombies[i].obj.position, b = zombies[j].obj.position; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.8 && d > 1e-3) { const p = (0.8 - d) / 2; a.x += dx / d * p; a.z += dz / d * p; b.x -= dx / d * p; b.z -= dz / d * p; } } }
 
 // spatial hash for colliders
 const CELL = 8, cgrid = new Map();
@@ -608,20 +794,11 @@ function setupJoystick(joyEl, stickEl, onMove) {
 }
 setupJoystick(document.getElementById('leftJoy'), document.getElementById('leftStick'), (x, y) => { moveX = x; moveZ = -y; });
 setupJoystick(document.getElementById('rightJoy'), document.getElementById('rightStick'), (x, y) => { lookX = x; lookY = y; });
-renderer.domElement.addEventListener('pointerdown', e => { if (e.clientX > innerWidth * 0.5) shoot(); });
-const ray = new THREE.Raycaster();
-function shoot() {
-  const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(pitch * 0.3, yaw, 0, 'YXZ'));
-  ray.set(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), dir);
-  const hits = ray.intersectObjects(zombies);
-  if (hits.length) { const z = hits[0].object; z.userData.health--;
-    if (z.userData.health <= 0) { scene.remove(z); zombies.splice(zombies.indexOf(z), 1); remaining--; updateCount(); if (remaining <= 0) document.getElementById('msg').textContent = 'Area clear for now. More will come...'; }
-    else { z.material.color.set(0xaa4444); setTimeout(() => z.material.color.set(0x6f7f5a), 150); } }
-}
-addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+renderer.domElement.addEventListener('pointerdown', e => { if (e.pointerType !== 'touch' || e.clientX > innerWidth * 0.5) heroAttack(); });
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ' || e.key.toLowerCase() === 'f') heroAttack(); });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-const clock = new THREE.Clock(); let health = 100; const healthEl = document.getElementById('health');
+const clock = new THREE.Clock(); var health = 100; const healthEl = document.getElementById('health');
 let frames = 0; const dbg = document.createElement('div');
 if (DEBUG) { dbg.style.cssText = 'position:fixed;top:78px;left:10px;color:#fff;font:12px monospace;z-index:30;text-shadow:0 1px 2px #000'; document.body.appendChild(dbg); }
 const VIEWS = {
@@ -640,22 +817,42 @@ function animate() {
   yaw -= lookX * 2.5 * dt; pitch = clamp(pitch - lookY * 1.8 * dt, -0.6, 0.6);
   if (keys['q']) yaw += 1.5 * dt; if (keys['e']) yaw -= 1.5 * dt;
   const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-  if (dx || dz) player.position.add(fwd.multiplyScalar(dz).add(right.multiplyScalar(dx)).normalize().multiplyScalar(6 * dt));
+  const mag = Math.min(1, Math.hypot(dx, dz)); const running = keys['shift'] || Math.hypot(moveX, moveZ) > 0.8;
+  let spd = 0;
+  if (!dead && mag > 0.1) {
+    const dir = fwd.clone().multiplyScalar(dz).add(right.clone().multiplyScalar(dx)).normalize();
+    spd = (running ? 6.2 : 3.0) * (attackT >= 0 ? 0.35 : 1);
+    player.position.addScaledVector(dir, spd * dt);
+    if (attackT < 0) heroFacing = Math.atan2(dir.x, dir.z);
+  }
   collide(player.position, 0.4);
-  player.position.y = heightAt(player.position.x, player.position.z) + 1.0;
+  player.position.y = heightAt(player.position.x, player.position.z);
+  if (hero) {
+    let dd = heroFacing - hero.obj.rotation.y; dd = Math.atan2(Math.sin(dd), Math.cos(dd)); hero.obj.rotation.y += dd * Math.min(1, dt * 12);
+    if (attackT >= 0) { attackT += dt; if (!attackHit && attackT > 0.32) { attackHit = true; resolveHeroHit(); } if (attackT > 0.75) attackT = -1; }
+    heroHurtT -= dt;
+    if (!dead && attackT < 0 && heroHurtT <= 0) hero.play(spd > 4 ? 'Run' : spd > 0 ? 'Walk' : 'Idle', { fade: 0.18, speed: spd > 4 ? 1 : spd > 0 ? 1.15 : 1 });
+    hero.mixer.update(dt);
+  }
+  // zombies: AI + throttled animation + posture
+  for (const z of [...zombies]) {
+    const w = updateZombie(z, dt, t);
+    collide(z.obj.position, 0.35); z.obj.position.y = heightAt(z.obj.position.x, z.obj.position.z) - (z.state === 'dead' && z.stateT > 10 ? (z.stateT - 10) * 0.25 : 0);
+    const dist = z.obj.position.distanceTo(camera.position);
+    if (z.tickAnim(dt, dist) && dist < 30) zombiePosture(z, z.runner ? w * 0.4 : w);
+    z.obj.visible = dist < 95;
+  }
+  separate();
+  tickBlood(dt);
   updateLods(false);
   grassU.uCenter.value.set(VIEWS[VIEW] ? VIEWS[VIEW][1][0] : player.position.x, VIEWS[VIEW] ? VIEWS[VIEW][1][2] : player.position.z);
 
-  const camPos = player.position.clone().add(camOffset.clone().applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
+  const camPos = player.position.clone().add(new THREE.Vector3(0, 0.2, 0)).addScaledVector(new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), 0.55).add(camOffset.clone().applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
   camPos.y = Math.max(camPos.y, heightAt(camPos.x, camPos.z) + 0.6);
-  camera.position.copy(camPos); camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+  camera.position.copy(camPos); camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.55, 0)).addScaledVector(right, 0.35));
+  if (VIEW === 'zside') { const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), r = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); const c = player.position.clone().addScaledVector(f, 2.5); camera.position.copy(c).addScaledVector(r, 5).add(new THREE.Vector3(0, 1.4, 0)); camera.lookAt(c.x, c.y + 1, c.z); }
   if (VIEWS[VIEW]) { const [a, b] = VIEWS[VIEW]; camera.position.set(a[0], heightAt(a[0], a[2]) + a[1], a[2]); camera.lookAt(b[0], heightAt(b[0], b[2]) + b[1], b[2]); }
 
-  for (const z of zombies) {
-    const tp = player.position.clone().sub(z.position); tp.y = 0; const d = tp.length();
-    if (d > 1.2) { z.position.add(tp.normalize().multiplyScalar(z.userData.speed * dt)); collide(z.position, 0.4); z.position.y = heightAt(z.position.x, z.position.z) + 1.1; z.lookAt(player.position.x, z.position.y, player.position.z); }
-    else if (d < 1.5 && health > 0) { health -= 8 * dt; healthEl.textContent = Math.max(0, Math.floor(health)); if (health <= 0) document.getElementById('msg').textContent = 'You died. Refresh to try again.'; }
-  }
   // atmosphere
   windU.uTime.value = t; if (waterU.mat) waterU.mat.uniforms.uTime.value = t;
   fireLight.intensity = 8 + Math.sin(t * 13) * 1.0 + Math.sin(t * 7.3) * 0.8 + Math.sin(t * 23) * 0.4;
@@ -670,9 +867,10 @@ function animate() {
   if (DEBUG && (frames++ % 10 === 0)) { const i = renderer.info.render; dbg.textContent = `calls ${i.calls} | tris ${(i.triangles / 1000).toFixed(0)}k | fps ${(1 / Math.max(dt, 1e-3)).toFixed(0)} | ready ${!!window.__bamReady}`; window.__bamStats = { calls: i.calls, triangles: i.triangles }; }
 }
 loadWorld();
+loadCharacters().then(() => { setupHero(); if (Q.has('zdemo')) { const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)); for (let i = 0; i < 4; i++) { const p = player.position.clone().addScaledVector(f, 3.5 + i * 1.6).add(new THREE.Vector3((i - 1.5) * 1.3, 0, 0)); spawnZombie(p.x, p.z); } } else spawnWave(); window.__charsReady = true; window.__attack = heroAttack; window.__zombies = zombies; window.__hero = () => hero; console.log('[BAM] characters ready'); }).catch(e => console.error('[BAM] characters failed', e));
 animate();
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-setTimeout(() => { const m = document.getElementById('msg'); if (m.textContent.includes('campsite')) m.textContent = 'Check your phone... messages are coming in.'; }, 4000);
+
 if (DEBUG) window.__prof = () => {
   const out = []; const base = () => { renderer.info.reset(); renderer.info.autoReset = false; renderer.render(scene, camera); const r = { c: renderer.info.render.calls, t: renderer.info.render.triangles }; renderer.info.autoReset = true; return r; };
   const all = base(); out.push('ALL ' + JSON.stringify(all));

@@ -18,3 +18,10 @@
 
 ## assets/lite/
 Lightweight copies of the asset-forge GLBs in assets/trees, assets/rocks, assets/wood (LOD0 + morph animations stripped, meshopt-compressed, `*_far.glb` = simplified LOD3). Originals are untouched.
+
+## assets/characters/ (copied from jonvmnielsen/game-assets, CC0-1.0)
+
+| File | Pack | Author |
+|------|------|--------|
+| adventurer.glb (player), casual.glb, farmer.glb, worker.glb (zombies, recoloured at runtime) | Quaternius Ultimate Modular Men | Quaternius |
+| axe.glb | Quaternius Zombie Apocalypse Kit – weapons | Quaternius |
