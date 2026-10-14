@@ -25,7 +25,7 @@ const isMobile = Q.has('mobile') || matchMedia('(pointer: coarse)').matches;
 const scene = new THREE.Scene();
 const FOG_COL = new THREE.Color(0xe9d2ab);
 scene.fog = new THREE.Fog(FOG_COL, 34, 115);
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 170);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 175);
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
@@ -66,6 +66,20 @@ scene.add(hemi);
   sky.frustumCulled = false; sky.renderOrder = -1; scene.add(sky);
   window.__sky = sky;
 }
+
+// distant ridges: a hazy mountain silhouette ring that follows the camera (no fog, 1 draw call)
+const ridges = (() => {
+  const N = 96, pos = [], col = [], near = new THREE.Color(0x7f9a82), far = new THREE.Color(0xb7c4c0), top = new THREE.Color(0xd9d2b8);
+  const g = new THREE.BufferGeometry(), idx = [];
+  for (let layer = 0; layer < 2; layer++) { const r = layer ? 140 : 128, base = pos.length / 3;
+    for (let i = 0; i <= N; i++) { const a = i / N * Math.PI * 2; const h = (layer ? 26 : 16) * (0.35 + fbm(Math.cos(a) * 3 + layer * 7, Math.sin(a) * 3, 77, 3)) + (layer ? 6 : 0);
+      pos.push(Math.cos(a) * r, -6, Math.sin(a) * r, Math.cos(a) * r, h, Math.sin(a) * r);
+      const c = (layer ? far : near).clone(); col.push(c.r, c.g, c.b); const t = c.clone().lerp(top, 0.35); col.push(t.r, t.g, t.b); }
+    for (let i = 0; i < N; i++) { const a = base + i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide }));
+  m.frustumCulled = false; m.renderOrder = -0.5; scene.add(m); return m;
+})();
 
 // ================= World layout =================
 const LAKE = { x: 16, z: 14, r: 19 };
@@ -121,13 +135,13 @@ let terrain;
   for (let i = 0; i < pos.count; i++) { const h = baseHeight(pos.getX(i), pos.getZ(i)); pos.setY(i, h); HGRID[i] = h; }
   g.computeVertexNormals();
   const nrm = g.attributes.normal, col = new Float32Array(pos.count * 3);
-  const C = { grass: new THREE.Color(0x86ad48), grass2: new THREE.Color(0xa8b956), dry: new THREE.Color(0xc2b265), moss: new THREE.Color(0x5b7f35), dirt: new THREE.Color(0x9d7448), sand: new THREE.Color(0xd8bf8a), wet: new THREE.Color(0x8c7652), rock: new THREE.Color(0x8f8574) };
+  const C = { grass: new THREE.Color(0x86ad48), grass2: new THREE.Color(0x96b850), dry: new THREE.Color(0xb7b062), moss: new THREE.Color(0x5b7f35), dirt: new THREE.Color(0x9d7448), sand: new THREE.Color(0xd8bf8a), wet: new THREE.Color(0x8c7652), rock: new THREE.Color(0x8f8574) };
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i), y = pos.getY(i);
     c.copy(C.grass).lerp(C.grass2, fbm(x * 0.08, z * 0.08, 5));
     c.lerp(C.dry, sstep(0.6, 0.8, fbm(x * 0.04, z * 0.04, 21)) * 0.7 + sstep(3, 9, y) * 0.3);
-    c.lerp(C.moss, forestMask(x, z) * 0.75);
+    { const fm = forestMask(x, z); c.lerp(C.moss, fm * 0.75); c.multiplyScalar(1 - 0.32 * sstep(0.35, 1, fm)); }
     const pd = pathDist(x, z); c.lerp(C.dirt, (1 - sstep(0.7, 2.1, pd)) * (0.75 + 0.25 * vnoise(x * 0.8, z * 0.8, 7)));
     const dc = Math.hypot(x - CAMP.x, z - CAMP.z); c.lerp(C.dirt, 0.6 * (1 - sstep(2, 6.5, dc)));
     const ln = lakeN(x, z); if (ln < 1.5) { c.lerp(C.sand, 1 - sstep(1.05, 1.35, ln) * (0.6 + 0.4 * vnoise(x, z, 3))); if (y < 0.05) c.lerp(C.wet, sstep(0.05, -0.6, y)); }
@@ -164,7 +178,7 @@ const grassU = { uTime: windU.uTime, uCenter: { value: new THREE.Vector2() } };
   hmap.magFilter = hmap.minFilter = THREE.LinearFilter; hmap.needsUpdate = true;
   grassU.uMap = { value: hmap };
   // clump of 5 tapered blades
-  const pos = [], col = [], base = new THREE.Color(0x6d8f34), tip = new THREE.Color(0xd8d478);
+  const pos = [], col = [], base = new THREE.Color(0x4a7d2a), tip = new THREE.Color(0xa9c95a);
   for (let b = 0; b < 6; b++) { const a = b / 6 * Math.PI * 2 + rand(), r = rr(0.02, 0.12), cx = Math.cos(a) * r, cz = Math.sin(a) * r, w = rr(0.05, 0.08), h = rr(0.6, 1.0), lean = rr(0.1, 0.3), ra = rand() * 6.28;
     const px = Math.cos(ra) * w, pz = Math.sin(ra) * w, lx = Math.cos(a) * lean, lz = Math.sin(a) * lean;
     pos.push(cx - px, 0, cz - pz, cx + px, 0, cz + pz, cx + lx, h, cz + lz); col.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b); }
@@ -239,14 +253,14 @@ const placed = [];      // spacing records {x,z,r}
 const colliders = [];   // {x,z,r}
 const items = [];       // {def,x,z,ry,tilt,s|h,tint,sink}
 function blocked(x, z, r, o = {}) {
-  if (Math.hypot(x, z) > WORLD_R - 4) return true;
+  if (Math.hypot(x, z) > WORLD_R - 12) return true;
   if (lakeN(x, z) < (o.lakeMin ?? 1.12)) return true;
   if (o.path !== false && pathDist(x, z) < (o.pathPad ?? 2.2) + r) return true;
   if (o.clear !== false && clearingW(x, z) > 0.15) return true;
   for (const p of placed) { const dx = x - p.x, dz = z - p.z, m = r + p.r; if (dx * dx + dz * dz < m * m) return true; }
   return false;
 }
-function item(def, x, z, o = {}) { const it = { def, x, z, ry: o.ry ?? rand() * Math.PI * 2, tilt: o.tilt ?? 0, tiltZ: o.tiltZ ?? 0, size: o.size ?? rr(def.size[0], def.size[1]), tint: o.tint ?? rr(0.86, 1.1), sink: o.sink ?? def.sink ?? 0, yOff: o.yOff ?? 0 }; items.push(it); return it; }
+function item(def, x, z, o = {}) { const it = { def, x, z, ry: o.ry ?? rand() * Math.PI * 2, tilt: o.tilt ?? 0, tiltZ: o.tiltZ ?? 0, size: o.size ?? rr(def.size[0], def.size[1]), tint: o.tint ?? rr(0.86, 1.1), sink: o.sink ?? def.sink ?? 0, yOff: o.yOff ?? 0, stretch: o.stretch, free: o.free }; items.push(it); return it; }
 function place(def, x, z, r, o = {}) { if (blocked(x, z, r, o)) return null; placed.push({ x, z, r }); const it = item(def, x, z, o); if (o.collide) colliders.push({ x, z, r: o.collide }); return it; }
 
 const F = 'assets/lite/', E = 'assets/env/';
@@ -309,19 +323,27 @@ item(D.car, CAR.x, CAR.z, { ry: CAR.ry, tilt: 0.03, tiltZ: -0.05 }); colliders.p
 item(D.crate, CAR.x + 2.6, CAR.z + 1.4, { ry: 0.7, tilt: 0.3, tint: 0.9 }); item(D.gascan, CAR.x - 2.2, CAR.z + 2.0, { tilt: 1.45, ry: 1 }); item(D.bag, CAR.x + 1.4, CAR.z + 2.8, { tilt: 1.2, ry: 0.4 });
 for (let i = 0; i < 7; i++) { if (i === 3 || i === 5) continue; const x = CAR.x - 6 + i * 2.0 * 0.95, z = CAR.z - 4.2 - i * 0.6; item(D.fence, x, z, { ry: Math.atan2(2.0 * 0.95, -0.6) - Math.PI / 2 + rr(-0.06, 0.06), tilt: i === 4 ? 0.35 : rr(-0.06, 0.06), tiltZ: i === 6 ? 0.5 : 0, tint: rr(0.8, 1.0) }); }
 
+// story clue: someone was dragged from the car into the north-west woods
+const TRAIL = [];
+{ let x = CAR.x + 2.5, z = CAR.z - 1.5, a = -2.3; for (let i = 0; i < 26; i++) { a += rr(-0.25, 0.25); x += Math.cos(a) * 0.9; z += Math.sin(a) * 0.9; TRAIL.push([x, z, rr(0.25, 0.6) * (1 - i / 40), rand() * 6.28]); }
+  const end = TRAIL[TRAIL.length - 1]; item(D.bag, end[0] + 0.6, end[1] + 0.3, { tilt: 1.3, ry: 0.8, tint: 0.85 }); item(D.lantern, end[0] - 0.8, end[1] + 0.5, { tiltZ: 1.45, ry: 2, yOff: 0.15 }); }
+const CLUES = [[CAMP.x + 6.5, CAMP.z + 5.5, 0.35, 0], [CAMP.x + 7.2, CAMP.z + 6.6, 0.25, 1]];
 // ruined cabin on the north trail (built from log instances below)
 placed.push({ x: CABIN.x, z: CABIN.z, r: 5.5 });
-colliders.push({ x: CABIN.x, z: CABIN.z, r: 3.2 });
 // rock formation on the east ridge
 placed.push({ x: ROCKS.x, z: ROCKS.z, r: 6 });
-for (const [dx, dz, s, t] of [[0, 0, 5.5, 0.15], [3.2, 1.8, 3.8, -0.2], [-2.6, 2.4, 3.2, 0.3], [1.5, -3, 2.6, 0.1], [-3.5, -1.5, 1.8, -0.3], [4.6, -1.6, 1.4, 0]]) {
-  item(D.rock, ROCKS.x + dx, ROCKS.z + dz, { size: s, tilt: t, tiltZ: rr(-0.2, 0.2), sink: 0.22, tint: rr(0.9, 1.05) }); colliders.push({ x: ROCKS.x + dx, z: ROCKS.z + dz, r: s * 0.5 });
+for (const [dx, dz, h, sx, t, tz] of [[0, 0, 9.5, 0.55, 0.06, -0.05], [2.4, 1.2, 7.2, 0.5, -0.12, 0.1], [-2.2, 1.6, 6.0, 0.6, 0.1, 0.16], [1.0, -2.4, 5.0, 0.7, 0.18, -0.1], [-3.4, -1.2, 3.4, 0.8, -0.2, -0.2], [4.2, -1.0, 2.6, 1.0, 0.1, 0.25], [-1.0, 3.6, 2.2, 1.1, 0.0, 0.1]]) {
+  item(D.rock, ROCKS.x + dx, ROCKS.z + dz, { size: h, stretch: [sx, 1, sx * rr(0.8, 1.1)], tilt: t, tiltZ: tz, ry: rand() * 6.28, sink: 0.12, tint: rr(0.88, 1.02) }); colliders.push({ x: ROCKS.x + dx, z: ROCKS.z + dz, r: Math.max(0.8, h * sx * 0.22) });
 }
+for (let i = 0; i < 10; i++) { const a = rand() * 6.28, d = rr(5, 8); item(rand() < 0.5 ? D.rock : D.rockC, ROCKS.x + Math.cos(a) * d, ROCKS.z + Math.sin(a) * d, { size: rr(0.4, 1.4), sink: 0.2 }); }
 // fallen giant tree with its broken stump
 placed.push({ x: GIANT.x, z: GIANT.z, r: 7 });
-item(D.log, GIANT.x, GIANT.z, { ry: GIANT.ry, size: 13, sink: 0.25, tint: 0.95 });
-for (let k = -2; k <= 2; k++) colliders.push({ x: GIANT.x + Math.cos(-GIANT.ry) * k * 2.6, z: GIANT.z + Math.sin(-GIANT.ry) * k * 2.6, r: 1.3 });
-item(D.stumpL, GIANT.x + Math.cos(-GIANT.ry) * 8.2, GIANT.z + Math.sin(-GIANT.ry) * 8.2, { size: 1.6, tint: 0.95 });
+const GDIR = new THREE.Vector3(0, 1, 0).applyEuler(new THREE.Euler(-Math.PI / 2 + 0.05, GIANT.ry, 0, 'YXZ'));
+{ const ry = GIANT.ry, fdir = GDIR;
+  item(D.pine[1], GIANT.x, GIANT.z, { ry, tilt: -Math.PI / 2 + 0.05, size: 15, free: true, yOff: 0.9, tint: 0.82 });
+  for (let k = 0; k < 6; k++) colliders.push({ x: GIANT.x + fdir.x * k * 2.2, z: GIANT.z + fdir.z * k * 2.2, r: k < 2 ? 0.9 : 1.8 });
+  item(D.stumpL, GIANT.x - fdir.x * 0.6, GIANT.z - fdir.z * 0.6, { ry, tilt: -Math.PI / 2 + 0.25, size: 1.0, stretch: [1.6, 1, 1.6], free: true, yOff: 1.1, tint: 0.9 });
+  for (let i = 0; i < 6; i++) item(D.rockC, GIANT.x - fdir.x * rr(1, 2) + rr(-1, 1), GIANT.z - fdir.z * rr(1, 2) + rr(-1, 1), { size: rr(0.25, 0.5), sink: 0.2 }); }
 // landmark tree on its own knoll
 placed.push({ x: LANDMARK.x, z: LANDMARK.z, r: 5 });
 item(D.broad[4], LANDMARK.x, LANDMARK.z, { size: 17, tint: 1.05, ry: 0.4 }); colliders.push({ x: LANDMARK.x, z: LANDMARK.z, r: 1.1 });
@@ -334,8 +356,12 @@ for (let i = 0; i < 9000 && placed.length < 520; i++) {
   if (rand() > p) continue;
   const def = rand() < 0.3 + 0.5 * north ? pick(D.pine) : pick(D.broad);
   const sz = m > 0.05 ? rr(...def.size) : rr(def.size[1] * 0.9, def.size[1] * 1.15); // lone meadow trees grow big
-  place(def, x, z, m > 0.5 ? 2.6 : 3.4, { size: sz, collide: 0.55, tint: rr(0.85, 1.08) });
+  place(def, x, z, m > 0.5 ? 2.6 : 3.4, { size: sz, collide: 0.55, tint: rr(0.85, 1.05) * (1 - 0.28 * sstep(0.4, 1, m)) });
 }
+// tree wall around the playable area hides the world edge
+for (let i = 0; i < 2200; i++) { const a = rand() * 6.283, d = rr(WORLD_R - 10, WORLD_R + 14), x = Math.cos(a) * d, z = Math.sin(a) * d;
+  if (lakeN(x, z) < 1.3 || pathDist(x, z) < 2) continue; let ok = true; for (const p of placed) if ((x - p.x) ** 2 + (z - p.z) ** 2 < 2.8 * 2.8) { ok = false; break; }
+  if (!ok) continue; placed.push({ x, z, r: 2.8 }); const def = rand() < 0.65 ? pick(D.pine) : pick(D.broad); item(def, x, z, { size: rr(def.size[1] * 0.9, def.size[1] * 1.25), tint: rr(0.7, 0.9) }); if (d < WORLD_R) colliders.push({ x, z, r: 0.55 }); }
 const treeSpots = placed.filter(p => p.r >= 2.6 && p.r < 4);
 // forest-edge undergrowth: bushes + ferns around trees, denser at the edge
 for (let i = 0; i < 520; i++) {
@@ -401,11 +427,12 @@ function addWind(mat) {
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _c = new THREE.Color();
 function matrixFor(it, bb) {
   const sz = bb.getSize(new THREE.Vector3());
-  const s = it.def.fit === 'len' ? it.size / Math.max(sz.x, sz.z) : it.size / sz.y;
-  const foot = Math.min(Math.max(sz.x, sz.z) * s * 0.35, 3);
-  const g = it.yOff ? heightAt(it.x, it.z) : groundUnder(it.x, it.z, foot);
-  const y = g - bb.min.y * s - it.sink * sz.y * s + it.yOff;
-  _e.set(it.tilt, it.ry, it.tiltZ, 'YXZ'); _q.setFromEuler(_e); _s.setScalar(s); _p.set(it.x, y, it.z);
+  const st = it.stretch || [1, 1, 1];
+  const s = it.def.fit === 'len' ? it.size / Math.max(sz.x, sz.z) : it.size / (sz.y * st[1]);
+  const foot = Math.min(Math.max(sz.x * st[0], sz.z * st[2]) * s * 0.35, 3);
+  const g = it.yOff || it.free ? heightAt(it.x, it.z) : groundUnder(it.x, it.z, foot);
+  const y = g - (it.free ? 0 : bb.min.y * s * st[1]) - it.sink * sz.y * s * st[1] + it.yOff;
+  _e.set(it.tilt, it.ry, it.tiltZ, 'YXZ'); _q.setFromEuler(_e); _s.set(s * st[0], s * st[1], s * st[2]); _p.set(it.x, y, it.z);
   return new THREE.Matrix4().compose(_p, _q, _s);
 }
 
@@ -460,6 +487,15 @@ async function buildInstanced(def) {
 }
 
 // ---- procedural A-frame tent with cloth sag ----
+function buildDecals() { // flat blood splats (one instanced draw call)
+  const g = new THREE.CircleGeometry(1, 9); g.rotateX(-Math.PI / 2);
+  const p = g.attributes.position; for (let i = 1; i < p.count; i++) { const k = rr(0.6, 1.25); p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k); }
+  const all = [...TRAIL, ...CLUES]; const extra = []; for (const [x, z, s] of TRAIL) if (rand() < 0.5) extra.push([x + rr(-0.4, 0.4), z + rr(-0.4, 0.4), s * 0.4, rand() * 6]);
+  const L = [...all, ...extra];
+  const im = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x6e120c, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), L.length);
+  L.forEach(([x, z, s, r], i) => { _e.set(0, r, 0); _q.setFromEuler(_e); _p.set(x, heightAt(x, z) + 0.03, z); _s.set(s, 1, s * rr(0.6, 1.4)); im.setMatrixAt(i, new THREE.Matrix4().compose(_p, _q, _s)); im.setColorAt(i, _c.setScalar(rr(0.7, 1.1))); });
+  im.receiveShadow = true; im.renderOrder = 1; scene.add(im);
+}
 function buildTent() {
   const grp = new THREE.Group(); const L = 2.6, W = 1.35, H = 1.45, NU = 10, NV = 7;
   const verts = [], cols = [], idx = [];
@@ -487,41 +523,79 @@ function buildTent() {
   for (const z of [-L / 2 - 0.02, L / 2 + 0.02]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, H + 0.15, 6), wood); p.position.set(0, (H + 0.15) / 2, z); p.castShadow = true; grp.add(p); }
   const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, L + 0.3, 5), wood); ridge.rotation.x = Math.PI / 2; ridge.position.y = H + 0.02; grp.add(ridge);
   // guy ropes
-  const rp = []; for (const z of [-L / 2 - 0.02, L / 2 + 0.02]) { const s = Math.sign(z); rp.push(0, H + 0.1, z, 0, 0, z + s * 1.1); }
+  const rp = []; for (const z of [-L / 2 - 0.02, L / 2 + 0.02]) { const s = Math.sign(z); rp.push(0, H + 0.1, z, 0, 0.12, z + s * 1.1); }
+  for (let i = 0; i < 6; i++) for (const sx of [-1, 1]) { const zz = -L / 2 + 0.2 + i * (L - 0.4) / 5; rp.push(sx * W * 0.55, H * 0.45, zz, sx * (W + 0.12), 0.12, zz); }
   const ropes = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)), new THREE.LineBasicMaterial({ color: 0xd8c9a0 })); grp.add(ropes);
+  const stake = new THREE.CylinderGeometry(0.02, 0.012, 0.3, 4);
+  const sk = new THREE.InstancedMesh(stake, wood, 14); let si = 0; const o3 = new THREE.Object3D();
+  for (const z of [-L / 2 - 1.12, L / 2 + 1.12]) { o3.position.set(0, 0.1, z); o3.rotation.set(Math.sign(z) * 0.4, 0, 0); o3.updateMatrix(); sk.setMatrixAt(si++, o3.matrix); }
+  for (let i = 0; i < 6; i++) for (const sx of [-1, 1]) { o3.position.set(sx * (W + 0.12), 0.08, -L / 2 + 0.2 + i * (L - 0.4) / 5); o3.rotation.set(0, 0, sx * -0.3); o3.updateMatrix(); sk.setMatrixAt(si++, o3.matrix); }
+  grp.add(sk);
+  const tarp = new THREE.Mesh(new THREE.PlaneGeometry(W * 2 + 0.3, L + 0.9), new THREE.MeshLambertMaterial({ color: 0x4f5f3a, polygonOffset: true, polygonOffsetFactor: -2 }));
+  tarp.rotation.x = -Math.PI / 2; tarp.position.set(0, 0.03, 0.25); tarp.receiveShadow = true; grp.add(tarp);
+  const bed = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.5, 3, 8), new THREE.MeshLambertMaterial({ color: 0x3c6e8f })); bed.rotation.x = Math.PI / 2; bed.scale.set(1, 1, 0.45); bed.position.set(0.35, 0.14, 0.35); bed.castShadow = true; grp.add(bed);
+  const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.12, 0.3), new THREE.MeshLambertMaterial({ color: 0xd9cfb4 })); pillow.position.set(0.35, 0.12, -0.75); grp.add(pillow);
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.2, 8), new THREE.MeshLambertMaterial({ color: 0x4a4a4a })); pot.position.set(-0.9, 0.1, L / 2 + 0.75); pot.castShadow = true; grp.add(pot);
   grp.position.set(TENT.x, heightAt(TENT.x, TENT.z) - 0.04, TENT.z); grp.rotation.y = TENT.ry; scene.add(grp);
 }
 // ---- ruined log cabin (one InstancedMesh of logs + collapsed roof planks) ----
 function buildCabin() {
-  const logGeo = new THREE.CylinderGeometry(0.17, 0.19, 1, 7); logGeo.rotateZ(Math.PI / 2);
-  const mats = []; const Wd = 5.2, Dp = 4.2, R = 0.36;
-  const wallH = [7, 4, 6, 2]; // logs per wall: north intact-ish, east collapsed, south with door, west ruined
-  const base = heightAt(CABIN.x, CABIN.z) - 0.1;
-  const toWorld = (x, y, z, ry, len, tz = 0) => { const m = new THREE.Matrix4(); _e.set(0, CABIN.ry + ry, tz, 'YXZ'); _q.setFromEuler(_e); _p.set(x, y, z).applyAxisAngle(new THREE.Vector3(0, 1, 0), CABIN.ry).add(new THREE.Vector3(CABIN.x, base, CABIN.z)); _s.set(len, 1, 1); return m.compose(_p, _q, _s); };
-  const walls = [[0, -Dp / 2, 0, Wd], [Wd / 2, 0, Math.PI / 2, Dp], [0, Dp / 2, 0, Wd], [-Wd / 2, 0, Math.PI / 2, Dp]];
-  walls.forEach(([cx, cz, ry, len], w) => {
-    for (let k = 0; k < wallH[w]; k++) {
-      const y = 0.18 + k * R + (ry ? R / 2 : 0); let L = len + 0.7;
-      if (w === 2 && k < 5) { // door gap in south wall
-        for (const s of [-1, 1]) mats.push(toWorld(cx + s * (len / 4 + 0.35), y, cz, ry, len / 2 - 0.35));
-        continue;
-      }
-      if (k === wallH[w] - 1 && w !== 0) L *= 0.55 + 0.3 * rand();
-      mats.push(toWorld(cx + (w % 2 ? 0 : (rand() - 0.5) * 0.3), y, cz + (w % 2 ? (rand() - 0.5) * 0.3 : 0), ry, L));
-    }
-  });
-  // fallen logs from the collapsed east wall
-  for (let k = 0; k < 3; k++) mats.push(toWorld(Wd / 2 + 0.9 + k * 0.4, 0.18, -0.6 + k * 0.7, 0.5 + k * 0.4, 3.2));
-  const im = new THREE.InstancedMesh(logGeo, new THREE.MeshLambertMaterial({ color: 0xb08a62 }), mats.length);
-  mats.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, _c.setScalar(rr(0.75, 1.0))); });
-  im.castShadow = im.receiveShadow = true; scene.add(im);
-  // half-collapsed roof planks leaning in
-  const plank = new THREE.BoxGeometry(0.28, 0.06, 3.0); const pm = [];
-  for (let i = 0; i < 9; i++) { const x = -Wd / 2 + 0.4 + i * 0.32; const fallen = i > 5; pm.push(toWorld(x, fallen ? 0.9 : 2.25, fallen ? -0.4 : -0.7, 0, 1, 0)); const m = pm[pm.length - 1]; m.multiply(new THREE.Matrix4().makeRotationX(fallen ? 0.9 : 0.42)); }
-  const roof = new THREE.InstancedMesh(plank, new THREE.MeshLambertMaterial({ color: 0x9a8068 }), pm.length);
-  pm.forEach((m, i) => roof.setMatrixAt(i, m)); roof.castShadow = roof.receiveShadow = true; scene.add(roof);
+  // Proper log cabin: interlocking notched logs with overhangs and cut ends, gable ends, plank roof with a
+  // collapsed hole, open door, broken windows, stone chimney and a porch. 3 instanced draw calls.
+  const W = 6.2, Dp = 4.8, R = 0.2, ROWS = 9, OH = 0.4;
+  const base = groundUnder(CABIN.x, CABIN.z, 3.5) - 0.05;
+  const up = new THREE.Vector3(0, 1, 0), origin = new THREE.Vector3(CABIN.x, base, CABIN.z);
+  const M = (x, y, z, ry, sx, sy, sz, rx = 0, rz = 0) => { _e.set(rx, CABIN.ry + ry, rz, 'YXZ'); _q.setFromEuler(_e); _p.set(x, y, z).applyAxisAngle(up, CABIN.ry).add(origin); _s.set(sx, sy, sz); return new THREE.Matrix4().compose(_p, _q, _s); };
+  const logs = [], planks = [], stones = [];
+  const logAt = (x, y, z, alongX, len, broken = 0) => logs.push(M(x, y, z, alongX ? 0 : Math.PI / 2, len, 1, 1, 0, broken));
+  const topY = ROWS * R * 1.8;
+  for (let k = 0; k < ROWS; k++) {
+    const yA = R + k * R * 1.8, yB = yA + R * 0.9; // front/back rows and side rows interleave (notched corners)
+    // front wall (z = +Dp/2): door gap and window gap
+    const fz = Dp / 2;
+    if (k < 6) { logAt(-W / 4 - 0.35 - OH / 2, yA, fz, true, W / 2 - 0.7 + OH); if (k < 3 || k > 4) logAt(W / 4 + 0.35 + OH / 2, yA, fz, true, W / 2 - 0.7 + OH); else { logAt(0.9, yA, fz, true, 0.7); logAt(W / 2 - 0.1, yA, fz, true, 0.9); } }
+    else logAt(0, yA, fz, true, W + OH * 2);
+    // back wall: collapsed upper corner on the east side
+    if (k < 6 || rand() < 0.3) logAt(0, yA, -Dp / 2, true, W + OH * 2); else logAt(-W * 0.22, yA, -Dp / 2, true, W * 0.56 + OH);
+    // west side wall (with window) and east side wall (top rows fallen)
+    if (k < 3 || k > 4) logAt(-W / 2, yB, 0, false, Dp + OH * 2); else { logAt(-W / 2, yB, -Dp / 4 - 0.4, false, Dp / 2 - 0.4); logAt(-W / 2, yB, Dp / 4 + 0.6, false, Dp / 2 - 0.6); }
+    if (k < 6) logAt(W / 2, yB, 0, false, Dp + OH * 2); else if (k < 8) logAt(W / 2, yB, Dp * 0.18, false, Dp * 0.6);
+  }
+  // gable triangles on both side walls
+  const gH = 1.9, gRows = 6;
+  for (let k = 0; k < gRows; k++) { const f = 1 - (k + 0.5) / gRows, len = Dp * f + 0.2, y = topY + R + k * R * 1.75; logAt(-W / 2, y, 0, false, len); if (k < 3) logAt(W / 2, y, 0, false, len); }
+  // ridge + purlins
+  logs.push(M(0, topY + gH + 0.15, 0, 0, W + 1.0, 0.9, 0.9));
+  for (const zz of [-Dp / 4, Dp / 4]) logs.push(M(-0.2, topY + gH / 2 + 0.1, zz, 0, W * (zz < 0 ? 0.62 : 1.05), 0.7, 0.7));
+  // fallen logs from the collapsed corner, lying outside
+  for (let k = 0; k < 4; k++) logs.push(M(W / 2 + 1.0 + k * 0.45, R * 0.9, -Dp / 2 + 0.4 + k * 0.5, 0.4 + k * 0.35, 3.0 - k * 0.3, 1, 1, 0, 0.05));
+  // roof: planks running down each slope; north slope has a collapsed hole
+  const slope = Math.atan2(gH, Dp / 2 + 0.5), sl = Math.hypot(gH, Dp / 2 + 0.5) + 0.25;
+  for (let i = 0; i < 22; i++) { const x = -W / 2 - 0.45 + i * ((W + 0.9) / 21);
+    for (const side of [1, -1]) {
+      const hole = side < 0 && x > 0.2 && x < 2.6; const jitter = rr(-0.03, 0.03);
+      if (hole) { if (rand() < 0.35) planks.push(M(x, topY + 0.3, -Dp / 4 + rr(-0.5, 0.5), 0, 1, 1, rr(1.2, 2.2), rr(0.9, 1.4), rr(-0.3, 0.3))); continue; }
+      planks.push(M(x, topY + gH / 2 + 0.22 + jitter, side * (Dp / 4 + 0.2), 0, 1, 1, sl * (side < 0 && x > 2.6 ? 0.7 : 1), side * slope));
+    } }
+  // door (open, hinged) + porch steps
+  planks.push(M(-0.75, 1.0, Dp / 2 + 0.45, 1.25, 0.9, 1.95, 0.08 / 0.06 * 0.06 + 0.02));
+  for (let i = 0; i < 3; i++) planks.push(M(0, 0.12, Dp / 2 + 0.55 + i * 0.32, 0, 1.6 / 0.28 * 0.28 + 1.2, 1.6, 1.0));
+  // stone chimney on the west gable
+  for (let k = 0; k < 18; k++) { const y = 0.25 + k * 0.32, w = k < 10 ? 1.1 : 0.7; stones.push(M(-W / 2 - 0.55 + rr(-0.04, 0.04), y, -0.2 + rr(-0.04, 0.04), rr(-0.1, 0.1), w, 0.34, w * 0.9)); }
+  const bark = new THREE.MeshLambertMaterial({ color: 0x9b7552 }), cut = new THREE.MeshLambertMaterial({ color: 0xd9b98a });
+  const logGeo = new THREE.CylinderGeometry(R, R * 1.05, 1, 8, 1); logGeo.rotateZ(Math.PI / 2);
+  const im = new THREE.InstancedMesh(logGeo, [bark, cut, cut], logs.length);
+  logs.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, _c.setScalar(rr(0.78, 1.05))); });
+  const pg = new THREE.BoxGeometry(0.3, 0.06, 1); const pl = new THREE.InstancedMesh(pg, new THREE.MeshLambertMaterial({ color: 0x8d7158 }), planks.length);
+  planks.forEach((m, i) => { pl.setMatrixAt(i, m); pl.setColorAt(i, _c.setRGB(rr(0.7, 1.0), rr(0.7, 0.95), rr(0.7, 0.9))); });
+  const sg = new THREE.DodecahedronGeometry(0.5, 0); sg.scale(1, 0.6, 1);
+  const st = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: 0x9a948a, flatShading: true }), stones.length);
+  stones.forEach((m, i) => { st.setMatrixAt(i, m); st.setColorAt(i, _c.setScalar(rr(0.8, 1.1))); });
+  for (const o of [im, pl, st]) { o.castShadow = o.receiveShadow = true; scene.add(o); }
+  // collision: four walls as circles
+  for (const [x, z] of [[-W / 2, 0], [W / 2, 0], [-1.6, -Dp / 2], [1.6, -Dp / 2], [-2.2, Dp / 2], [2.2, Dp / 2], [-W / 2 - 0.55, -0.2]]) { const p = new THREE.Vector3(x, 0, z).applyAxisAngle(up, CABIN.ry); colliders.push({ x: CABIN.x + p.x, z: CABIN.z + p.z, r: 0.9 }); }
+  buildGrid();
 }
-
 // ---- campfire: model + flames + embers + flickering light ----
 const fireLight = new THREE.PointLight(0xff8a35, 9, 14, 1.7);
 const fireY = heightAt(FIRE.x, FIRE.z);
@@ -567,7 +641,7 @@ function updateLods(force) {
 
 let loadedOk = 0, loadFail = 0;
 async function loadWorld() {
-  buildTent(); buildCabin();
+  buildTent(); buildCabin(); buildDecals();
   const tasks = [buildBatch(), placeCampfire(), ...[...new Set(items.filter(i => !i.def.batch).map(i => i.def))].map(d => buildInstanced(d))];
   const r = await Promise.allSettled(tasks); r.forEach(x => x.status === 'fulfilled' ? loadedOk++ : (loadFail++, console.warn('[BAM] load failed', x.reason)));
   console.log('[BAM] world ready: groups ok', loadedOk, 'failed', loadFail, 'objects', items.length, 'colliders', colliders.length);
@@ -806,7 +880,7 @@ const VIEWS = {
   lake: [[CAMP.x + 2, 3, CAMP.z - 2], [LAKE.x, 0, LAKE.z]], car: [[CAR.x + 8, 2.5, CAR.z + 6], [CAR.x, 0.5, CAR.z]],
   cabin: [[CABIN.x + 9, 3, CABIN.z + 8], [CABIN.x, 1, CABIN.z]], rocks: [[ROCKS.x - 13, 2.5, ROCKS.z + 11], [ROCKS.x, 2, ROCKS.z]],
   meadow: [[CAMP.x + 10, 1.7, CAMP.z - 14], [CAMP.x + 16, 0.5, CAMP.z - 26]],
-  giant: [[GIANT.x + 4, 5, GIANT.z + 16], [GIANT.x, 0.5, GIANT.z]], forest: [[-20, 2, -30], [-40, 3, -60]],
+  giant: [[GIANT.x + GDIR.x * 3 - GDIR.z * 13, 3.5, GIANT.z + GDIR.z * 3 + GDIR.x * 13], [GIANT.x + GDIR.x * 5, 1, GIANT.z + GDIR.z * 5]], trail: [[CAR.x + 4, 2.5, CAR.z + 3], [CAR.x - 6, 0, CAR.z - 10]], edge: [[-5, 2.5, 62], [-5, 9, 130]], tent: [[CAMP.x - 7, 2.2, CAMP.z + 7.5], [CAMP.x - 4.6, 0.6, CAMP.z + 3.2]], forest: [[-24, 1.8, -36], [-40, 2.5, -52]],
 };
 function animate() {
   requestAnimationFrame(animate);
@@ -861,7 +935,7 @@ function animate() {
   embGeo.attributes.position.needsUpdate = true;
   const focus = VIEWS[VIEW] ? new THREE.Vector3(...VIEWS[VIEW][1]) : player.position;
   sun.target.position.copy(focus); sun.position.copy(focus).addScaledVector(SUN_DIR, 80);
-  window.__sky.position.copy(camera.position);
+  window.__sky.position.copy(camera.position); ridges.position.set(camera.position.x, 0, camera.position.z);
 
   renderer.render(scene, camera);
   if (DEBUG && (frames++ % 10 === 0)) { const i = renderer.info.render; dbg.textContent = `calls ${i.calls} | tris ${(i.triangles / 1000).toFixed(0)}k | fps ${(1 / Math.max(dt, 1e-3)).toFixed(0)} | ready ${!!window.__bamReady}`; window.__bamStats = { calls: i.calls, triangles: i.triangles }; }
