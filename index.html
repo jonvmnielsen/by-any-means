@@ -58,8 +58,9 @@
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.Fog(0x87ceeb, 40, 120);
+    // Warmer sky and soft fog (Grounded-inspired)
+    scene.background = new THREE.Color(0xb8d4e8);
+    scene.fog = new THREE.Fog(0xb8d4e8, 50, 140);
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -67,33 +68,33 @@
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // Lights
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    // Warmer, softer lights
+    const hemi = new THREE.HemisphereLight(0xfff5e6, 0x7a9a6a, 0.7);
     scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(20, 40, 10);
+    const dir = new THREE.DirectionalLight(0xffe8c8, 0.9);
+    dir.position.set(30, 50, 20);
     dir.castShadow = true;
     scene.add(dir);
 
-    // Ground
+    // Warmer ground
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshLambertMaterial({ color: 0x3a5f3a })
+      new THREE.MeshLambertMaterial({ color: 0x5a8a4a })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Lake (simple blue plane)
+    // Lake (softer blue)
     const lake = new THREE.Mesh(
       new THREE.CircleGeometry(18, 32),
-      new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.7 })
+      new THREE.MeshLambertMaterial({ color: 0x4aa3d8, transparent: true, opacity: 0.75 })
     );
     lake.rotation.x = -Math.PI / 2;
     lake.position.set(15, 0.05, 10);
     scene.add(lake);
 
-    // Campsite objects
+    // Campsite objects (warmer tones)
     function box(w, h, d, color, x, y, z) {
       const m = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, d),
@@ -105,19 +106,19 @@
       scene.add(m);
       return m;
     }
-    box(1.2, 0.3, 1.2, 0x8B4513, -2, 0.15, -3); // table
-    box(0.8, 1.2, 0.8, 0x4a3728, -4, 0.6, -5); // tent-ish
-    box(0.4, 1.5, 0.4, 0x5a4a3a, 1, 0.75, -4); // tree stump
-    // Trees
+    box(1.2, 0.3, 1.2, 0x8B5a2b, -2, 0.15, -3); // table
+    box(0.8, 1.2, 0.8, 0x6b4e31, -4, 0.6, -5); // tent-ish
+    box(0.4, 1.5, 0.4, 0x7a5c3a, 1, 0.75, -4); // tree stump
+    // Trees (slightly warmer greens)
     for (let i = 0; i < 20; i++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = 25 + Math.random() * 40;
       const x = Math.cos(ang) * dist;
       const z = Math.sin(ang) * dist;
-      const trunk = box(0.4, 4 + Math.random()*2, 0.4, 0x4a3728, x, 2, z);
+      const trunk = box(0.4, 4 + Math.random()*2, 0.4, 0x6b4e31, x, 2, z);
       const leaves = new THREE.Mesh(
         new THREE.ConeGeometry(2, 4, 8),
-        new THREE.MeshLambertMaterial({ color: 0x2d5a2d })
+        new THREE.MeshLambertMaterial({ color: 0x3d7a3d })
       );
       leaves.position.set(x, 5.5, z);
       scene.add(leaves);
