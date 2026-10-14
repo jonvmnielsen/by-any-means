@@ -22,6 +22,15 @@ Play in your mobile browser (or desktop). No install required.
 - **Massive scale**: Designed for a huge map with hundreds of thousands of zombies and many NPCs (streaming / LOD later). Starts small and playable.
 - **English language**.
 
+## Art Style
+**Direction**: Grounded-inspired — stylized, warm, clear and readable. Not horror, not dark, not blocky Minecraft-style, and not heavy realism.
+
+- **Lighting**: Clear daylight, soft shadows, warm (golden/sunlit) tones. Avoid harsh contrast and heavy dark fog.
+- **Colors**: Warm earth, wood, and green tones with clear readability. Blood and gore act as strong red accents against the brighter world, not the overall mood.
+- **Models**: Organic stylized low-poly (Asset Forge style). Distinct silhouettes, not hard geometric primitives or Lego blocks. Modular where possible for dismemberment and destruction.
+- **Atmosphere**: Adult (violence, blood, consequences) but the world itself stays bright and inviting. Danger comes from the zombies and situations, not from darkness.
+- **Asset strategy**: Produce as much as possible ourselves via Asset Forge. Supplement with free/CC0 packs from game-assets (KayKit, Quaternius, Poly Haven etc.), adapted to the style (recolored, warmer lighting). No purchased asset packs.
+
 ## Starting Location
 Campsite in the forest next to a lake, some distance from the "million city".
 
