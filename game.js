@@ -20,7 +20,7 @@ function vnoise(x, z, s = 0) { const i = Math.floor(x), j = Math.floor(z), fx = 
 function fbm(x, z, s = 0, oct = 4) { let a = 0, amp = 0.5, f = 1, n = 0; for (let o = 0; o < oct; o++) { a += amp * vnoise(x * f, z * f, s + o * 17); n += amp; amp *= 0.5; f *= 2.03; } return a / n; }
 
 // ================= Renderer / scene =================
-const isMobile = matchMedia('(pointer: coarse)').matches;
+const isMobile = Q.has('mobile') || matchMedia('(pointer: coarse)').matches;
 const scene = new THREE.Scene();
 const FOG_COL = new THREE.Color(0xe9d2ab);
 scene.fog = new THREE.Fog(FOG_COL, 34, 115);
@@ -462,15 +462,15 @@ async function buildInstanced(def) {
 function buildTent() {
   const grp = new THREE.Group(); const L = 2.6, W = 1.35, H = 1.45, NU = 10, NV = 7;
   const verts = [], cols = [], idx = [];
-  const canvas = new THREE.Color(0xc9a46a), shade = new THREE.Color(0x8f6f43);
+  const canvas = new THREE.Color(0xc98a4b), shade = new THREE.Color(0x7d5a36), stripe = new THREE.Color(0x8a9a5b);
   const addSide = sgn => {
     const base = verts.length / 3;
     for (let v = 0; v <= NV; v++) for (let u = 0; u <= NU; u++) {
       const fu = u / NU, fv = v / NV;
-      const sag = 0.13 * Math.sin(Math.PI * fu) * Math.sin(Math.PI * fv) + 0.03 * Math.sin(fu * 25) * fv;
+      const sag = 0.17 * Math.sin(Math.PI * fu) * Math.sin(Math.PI * fv) + 0.03 * Math.sin(fu * 25) * fv;
       let x = sgn * (W * fv), y = H * (1 - fv), z = (fu - 0.5) * L * (1 + 0.08 * fv);
       x -= sgn * sag * 0.85; y -= sag * 0.5;
-      verts.push(x, y, z); const c = canvas.clone().lerp(shade, fv * 0.45 + 0.1 * Math.sin(fu * 9)); cols.push(c.r, c.g, c.b);
+      verts.push(x, y, z); const c = (fv > 0.78 ? stripe.clone() : canvas.clone()).lerp(shade, fv * 0.35 + 0.08 * Math.sin(fu * 9) + sag * 1.5); cols.push(c.r, c.g, c.b);
     }
     for (let v = 0; v < NV; v++) for (let u = 0; u < NU; u++) { const a = base + v * (NU + 1) + u, b = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
   };
