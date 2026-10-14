@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>By Any Means</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: system-ui, sans-serif; touch-action: none; }
+    #ui {
+      position: fixed; top: 10px; left: 10px; color: #eee; font-size: 14px;
+      text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 10;
+    }
+    #crosshair {
+      position: fixed; top: 50%; left: 50%; width: 12px; height: 12px;
+      border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%);
+      pointer-events: none; z-index: 5;
+    }
+    .joystick {
+      position: fixed; width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4);
+      z-index: 20; touch-action: none;
+    }
+    #leftJoy { bottom: 30px; left: 30px; }
+    #rightJoy { bottom: 30px; right: 30px; }
+    .stick {
+      position: absolute; width: 50px; height: 50px; border-radius: 50%;
+      background: rgba(255,255,255,0.6); top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    #msg {
+      position: fixed; bottom: 160px; left: 50%; transform: translateX(-50%);
+      color: #ffcc00; font-size: 16px; text-align: center; max-width: 90%;
+      text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>Zombies remaining: <span id="zombieCount">5</span></div>
+    <div>Health: <span id="health">100</span></div>
+    <div style="font-size:12px; opacity:0.8; margin-top:4px;">Left stick: move | Right: look | Tap right side: shoot</div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="msg">You wake up at the campsite by the lake. Something feels wrong...</div>
+  <div class="joystick" id="leftJoy"><div class="stick" id="leftStick"></div></div>
+  <div class="joystick" id="rightJoy"><div class="stick" id="rightStick"></div></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 40, 120);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Lights
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(20, 40, 10);
+    dir.castShadow = true;
+    scene.add(dir);
+
+    // Ground
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(200, 200),
+      new THREE.MeshLambertMaterial({ color: 0x3a5f3a })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Lake (simple blue plane)
+    const lake = new THREE.Mesh(
+      new THREE.CircleGeometry(18, 32),
+      new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.7 })
+    );
+    lake.rotation.x = -Math.PI / 2;
+    lake.position.set(15, 0.05, 10);
+    scene.add(lake);
+
+    // Campsite objects
+    function box(w, h, d, color, x, y, z) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshLambertMaterial({ color })
+      );
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      scene.add(m);
+      return m;
+    }
+    box(1.2, 0.3, 1.2, 0x8B4513, -2, 0.15, -3); // table
+    box(0.8, 1.2, 0.8, 0x4a3728, -4, 0.6, -5); // tent-ish
+    box(0.4, 1.5, 0.4, 0x5a4a3a, 1, 0.75, -4); // tree stump
+    // Trees
+    for (let i = 0; i < 20; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 25 + Math.random() * 40;
+      const x = Math.cos(ang) * dist;
+      const z = Math.sin(ang) * dist;
+      const trunk = box(0.4, 4 + Math.random()*2, 0.4, 0x4a3728, x, 2, z);
+      const leaves = new THREE.Mesh(
+        new THREE.ConeGeometry(2, 4, 8),
+        new THREE.MeshLambertMaterial({ color: 0x2d5a2d })
+      );
+      leaves.position.set(x, 5.5, z);
+      scene.add(leaves);
+    }
+
+    // Player
+    const player = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.4, 1.2, 4, 8),
+      new THREE.MeshLambertMaterial({ color: 0x3366aa })
+    );
+    player.position.set(0, 1.2, 0);
+    player.castShadow = true;
+    scene.add(player);
+
+    // Camera third-person offset
+    const camOffset = new THREE.Vector3(0, 3.5, 6);
+    let yaw = 0;
+    let pitch = 0.2;
+
+    // Zombies (simple capsules)
+    const zombies = [];
+    const zombieCountEl = document.getElementById('zombieCount');
+    let remaining = 5;
+    function spawnZombie(x, z) {
+      const zom = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.4, 1.4, 4, 8),
+        new THREE.MeshLambertMaterial({ color: 0x556655 })
+      );
+      zom.position.set(x, 1.1, z);
+      zom.castShadow = true;
+      zom.userData = { speed: 1.2 + Math.random()*0.6, health: 2, isZombie: true };
+      scene.add(zom);
+      zombies.push(zom);
+    }
+    spawnZombie(8, 6);
+    spawnZombie(-6, 8);
+    spawnZombie(4, -10);
+    spawnZombie(12, -4);
+    spawnZombie(-10, -6);
+    updateCount();
+
+    function updateCount() {
+      zombieCountEl.textContent = remaining;
+    }
+
+    // Input
+    const keys = {};
+    let moveX = 0, moveZ = 0;
+    let lookX = 0, lookY = 0;
+
+    // Joysticks
+    function setupJoystick(joyEl, stickEl, onMove) {
+      let active = false, startX, startY;
+      const max = 50;
+      joyEl.addEventListener('pointerdown', e => {
+        active = true;
+        startX = e.clientX; startY = e.clientY;
+        joyEl.setPointerCapture(e.pointerId);
+      });
+      joyEl.addEventListener('pointermove', e => {
+        if (!active) return;
+        let dx = e.clientX - startX;
+        let dy = e.clientY - startY;
+        const dist = Math.hypot(dx, dy);
+        if (dist > max) { dx = dx/dist*max; dy = dy/dist*max; }
+        stickEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        onMove(dx/max, dy/max);
+      });
+      const end = () => {
+        active = false;
+        stickEl.style.transform = 'translate(-50%, -50%)';
+        onMove(0, 0);
+      };
+      joyEl.addEventListener('pointerup', end);
+      joyEl.addEventListener('pointercancel', end);
+    }
+
+    setupJoystick(document.getElementById('leftJoy'), document.getElementById('leftStick'), (x, y) => {
+      moveX = x;
+      moveZ = -y; // up is negative y on screen but forward
+    });
+    setupJoystick(document.getElementById('rightJoy'), document.getElementById('rightStick'), (x, y) => {
+      lookX = x;
+      lookY = y;
+    });
+
+    // Shoot on right side tap (or click)
+    renderer.domElement.addEventListener('pointerdown', e => {
+      if (e.clientX > window.innerWidth * 0.5) shoot();
+    });
+
+    function shoot() {
+      const raycaster = new THREE.Raycaster();
+      const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+      raycaster.set(player.position.clone().add(new THREE.Vector3(0, 1.2, 0)), dir);
+      const hits = raycaster.intersectObjects(zombies);
+      if (hits.length) {
+        const z = hits[0].object;
+        z.userData.health--;
+        if (z.userData.health <= 0) {
+          scene.remove(z);
+          zombies.splice(zombies.indexOf(z), 1);
+          remaining--;
+          updateCount();
+          if (remaining <= 0) document.getElementById('msg').textContent = 'Area clear for now. More will come...';
+        } else {
+          z.material.color.set(0xaa4444);
+          setTimeout(() => z.material.color.set(0x556655), 150);
+        }
+      }
+    }
+
+    // Keyboard for desktop
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    const clock = new THREE.Clock();
+    let health = 100;
+    const healthEl = document.getElementById('health');
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+
+      // Desktop movement
+      let dx = moveX, dz = moveZ;
+      if (keys['w'] || keys['arrowup']) dz += 1;
+      if (keys['s'] || keys['arrowdown']) dz -= 1;
+      if (keys['a'] || keys['arrowleft']) dx -= 1;
+      if (keys['d'] || keys['arrowright']) dx += 1;
+
+      // Look
+      yaw -= lookX * 2.5 * dt;
+      pitch = Math.max(-0.8, Math.min(0.6, pitch - lookY * 1.8 * dt));
+      if (keys['q']) yaw += 1.5 * dt;
+      if (keys['e']) yaw -= 1.5 * dt;
+
+      // Move player
+      const speed = 6;
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      const move = forward.multiplyScalar(dz).add(right.multiplyScalar(dx)).normalize().multiplyScalar(speed * dt);
+      if (dx || dz) player.position.add(move);
+
+      // Camera
+      const camPos = player.position.clone().add(camOffset.clone().applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
+      camera.position.copy(camPos);
+      camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.4, 0)));
+
+      // Zombies chase
+      zombies.forEach(z => {
+        const toPlayer = player.position.clone().sub(z.position);
+        toPlayer.y = 0;
+        const dist = toPlayer.length();
+        if (dist > 1.2) {
+          toPlayer.normalize().multiplyScalar(z.userData.speed * dt);
+          z.position.add(toPlayer);
+          z.lookAt(player.position.x, z.position.y, player.position.z);
+        } else if (dist < 1.5 && health > 0) {
+          health -= 8 * dt;
+          healthEl.textContent = Math.max(0, Math.floor(health));
+          if (health <= 0) document.getElementById('msg').textContent = 'You died. Refresh to try again.';
+        }
+      });
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Hide intro message after a bit
+    setTimeout(() => {
+      const m = document.getElementById('msg');
+      if (m.textContent.includes('campsite')) m.textContent = 'Check your phone... messages are coming in.';
+    }, 4000);
+  </script>
+</body>
+</html>
