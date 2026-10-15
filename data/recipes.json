@@ -1,0 +1,18 @@
+{
+  "_comment": "Stub for crafting/building. Item ids match ITEMS in inventory.js. Not yet consumed by the game.",
+  "version": 1,
+  "crafting": [
+    { "id": "rope", "out": { "rope": 1 }, "in": { "fiber": 3 }, "time": 2, "station": null },
+    { "id": "stone_axe", "out": { "stone_axe": 1 }, "in": { "sticks": 2, "stone": 2, "fiber": 2 }, "time": 4, "station": null },
+    { "id": "torch", "out": { "torch": 1 }, "in": { "sticks": 1, "cloth": 1 }, "time": 2, "station": null },
+    { "id": "backpack_canvas", "out": { "backpack_canvas": 1 }, "in": { "cloth": 6, "rope": 2 }, "time": 8, "station": "workbench" },
+    { "id": "berry_mash", "out": { "berry_mash": 1 }, "in": { "berries": 4 }, "time": 2, "station": "campfire" }
+  ],
+  "building": [
+    { "id": "campfire", "in": { "stone": 6, "wood": 3 }, "footprint": [1.6, 1.6], "snap": "ground" },
+    { "id": "workbench", "in": { "wood": 8, "stone": 2 }, "footprint": [1.8, 0.9], "snap": "ground" },
+    { "id": "wood_foundation", "in": { "wood": 10 }, "footprint": [3, 3], "snap": "grid3" },
+    { "id": "wood_wall", "in": { "wood": 6, "fiber": 2 }, "footprint": [3, 0.3], "snap": "edge" },
+    { "id": "wood_doorway", "in": { "wood": 5, "fiber": 2 }, "footprint": [3, 0.3], "snap": "edge" }
+  ]
+}

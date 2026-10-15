@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { Inventory, buildUI, ITEMS } from './inventory.js';
 
 // ================= Config / RNG =================
 const Q = new URLSearchParams(location.search);
@@ -461,7 +462,7 @@ async function buildBatch() {
     V += gn.attributes.position.count; I += gn.index.count; FV += gm.attributes.position.count + gf.attributes.position.count; FI += gm.index.count + gf.index.count; }
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }); addWind(mat);
   // near batch casts shadows; far batch (LOD2) does not -> shadow pass stays cheap
-  batch = new THREE.BatchedMesh(batchItems.length + 4, V, I, mat); farBatch = new THREE.BatchedMesh(batchItems.length * 2 + 4, FV, FI, mat);
+  batch = new THREE.BatchedMesh(batchItems.length + 96, V, I, mat); farBatch = new THREE.BatchedMesh(batchItems.length * 2 + 4, FV, FI, mat);
   batch.castShadow = true; batch.receiveShadow = true; farBatch.receiveShadow = true;
   for (const [d, gn, gm, gf] of geos) batchGeo.set(d, { near: batch.addGeometry(gn), mid: farBatch.addGeometry(gm), far: gf === gm ? -1 : farBatch.addGeometry(gf), bb: gn.boundingBox });
   for (const it of batchItems) {
@@ -636,16 +637,16 @@ function updateLods(force) {
   const p = player ? player.position : new THREE.Vector3(CAMP.x, 0, CAMP.z);
   if (!force && p.distanceToSquared(lastLod) < 6) return; lastLod.copy(p);
   if (batch) for (const it of batchItems) {
-    if (it.nearId === undefined) continue; const d = Math.hypot(it.x - p.x, it.z - p.z);
+    if (it.nearId === undefined || it.gone || it.anim) continue; const d = Math.hypot(it.x - p.x, it.z - p.z);
     const nearD = it.big ? (isMobile ? 18 : 24) : 16;
     const near = d < (it.wall ? 0 : nearD), inRange = d < (it.big ? 112 : 70), mid = !near && inRange && (it.farId === undefined || d < (it.wall ? (isMobile ? 22 : 34) : 50));
     batch.setVisibleAt(it.nearId, near); farBatch.setVisibleAt(it.midId, mid);
     if (it.farId !== undefined) farBatch.setVisibleAt(it.farId, !near && !mid && inRange);
   }
   for (const g of instGroups) {
-    if (!g.cull) { g.im.count = g.list.length; continue; }
+    if (!g.cull) { if (g.dirty) { g.dirty = 0; let n = 0; for (const it of g.list) if (!it.gone) { g.im.setMatrixAt(n, it.matrix); g.im.setColorAt(n, _c.setScalar(it.tint)); n++; } g.im.count = n; g.im.instanceMatrix.needsUpdate = true; if (g.im.instanceColor) g.im.instanceColor.needsUpdate = true; } else if (!g.init) { g.init = 1; g.im.count = g.list.length; } continue; }
     // reorder visible instances to the front (only nearby small plants are drawn)
-    let n = 0; for (const it of g.list) { if (Math.hypot(it.x - p.x, it.z - p.z) < g.cull) { g.im.setMatrixAt(n, it.matrix); g.im.setColorAt(n, _c.setScalar(it.tint)); n++; } }
+    let n = 0; for (const it of g.list) { if (!it.gone && Math.hypot(it.x - p.x, it.z - p.z) < g.cull) { g.im.setMatrixAt(n, it.matrix); g.im.setColorAt(n, _c.setScalar(it.tint)); n++; } }
     g.im.count = n; g.im.instanceMatrix.needsUpdate = true; if (g.im.instanceColor) g.im.instanceColor.needsUpdate = true; g.im.frustumCulled = false;
   }
 }
@@ -657,7 +658,7 @@ async function loadWorld() {
   const r = await Promise.allSettled(tasks); r.forEach(x => x.status === 'fulfilled' ? loadedOk++ : (loadFail++, console.warn('[BAM] load failed', x.reason)));
   console.log('[BAM] world ready: groups ok', loadedOk, 'failed', loadFail, 'objects', items.length, 'colliders', colliders.length);
   buildGrid(); for (const it of items) if ((it.def === D.rock || it.def === D.rockC) && it.size > 0.6 && !it.free && !solidAt(it.x, it.z, 0)) colliders.push({ x: it.x, z: it.z, r: it.size * 0.42 });
-  buildGrid(); safeSpawn(player.position);
+  buildGrid(); safeSpawn(player.position); registerNodes();
   window.__bamReady = true;
 }
 
@@ -933,8 +934,10 @@ function setupJoystick(joyEl, stickEl, onMove) {
 }
 setupJoystick(document.getElementById('leftJoy'), document.getElementById('leftStick'), (x, y) => { moveX = x; moveZ = -y; });
 setupJoystick(document.getElementById('rightJoy'), document.getElementById('rightStick'), (x, y) => { lookX = x; lookY = y; });
-renderer.domElement.addEventListener('pointerdown', e => { if (e.pointerType !== 'touch' || e.clientX > innerWidth * 0.5) heroAttack(); });
-addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ' || e.key.toLowerCase() === 'f') heroAttack(); });
+let drag = null; renderer.domElement.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') { if (e.clientX > innerWidth * 0.5) heroAttack(); return; } drag = { x: e.clientX, y: e.clientY, moved: 0 }; });
+addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY; if (drag.moved > 6) { yaw -= dx * 0.005; pitch = clamp(pitch - dy * 0.003, -0.6, 0.6); } });
+addEventListener('pointerup', e => { if (drag && drag.moved <= 6 && e.target === renderer.domElement) heroAttack(); drag = null; });
+addEventListener('keydown', e => { if (e.key === 'Tab') e.preventDefault(); keys[e.key.toLowerCase()] = true; if (ui.open()) return; if (e.key === ' ' || e.key.toLowerCase() === 'f') heroAttack(); if (e.key.toLowerCase() === 'e' && !e.repeat) interact(); });
 // no browser zoom (pinch, double-tap, ctrl+wheel, Safari gestures)
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', e => { if (e.touches.length > 1 || e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
@@ -961,7 +964,7 @@ function animate() {
   if (keys['w'] || keys['arrowup']) dz += 1; if (keys['s'] || keys['arrowdown']) dz -= 1;
   if (keys['a'] || keys['arrowleft']) dx -= 1; if (keys['d'] || keys['arrowright']) dx += 1;
   yaw -= lookX * 2.5 * dt; pitch = clamp(pitch - lookY * 1.8 * dt, -0.6, 0.6);
-  if (keys['q']) yaw += 1.5 * dt; if (keys['e']) yaw -= 1.5 * dt;
+  if (keys['q']) yaw += 1.5 * dt; if (keys['r']) yaw -= 1.5 * dt;
   const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
   const mag = Math.min(1, Math.hypot(dx, dz)); const running = keys['shift'] || Math.hypot(moveX, moveZ) > 0.8;
   let spd = 0;
@@ -991,7 +994,7 @@ function animate() {
   }
   separate();
   tickBlood(dt);
-  updateLods(false);
+  updateLods(false); tickGather(dt);
   grassU.uCenter.value.set(VIEWS[VIEW] ? VIEWS[VIEW][1][0] : player.position.x, VIEWS[VIEW] ? VIEWS[VIEW][1][2] : player.position.z);
 
   const camPos = player.position.clone().add(new THREE.Vector3(0, 0.2, 0)).addScaledVector(new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), 0.55).add(camOffset.clone().applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
@@ -1015,6 +1018,99 @@ function animate() {
   renderer.render(scene, camera);
   if (DEBUG && (frames++ % 10 === 0)) { const i = renderer.info.render; dbg.textContent = `calls ${i.calls} | tris ${(i.triangles / 1000).toFixed(0)}k | fps ${(1 / Math.max(dt, 1e-3)).toFixed(0)} | ready ${!!window.__bamReady}`; window.__bamStats = { calls: i.calls, triangles: i.triangles }; }
 }
+// ================= Gathering + inventory =================
+const inv = new Inventory(); const isTouchUI = isMobile || 'ontouchstart' in window;
+const ui = buildUI(inv, { onUse: () => interact(), isTouch: isTouchUI });
+const NODE_T = {
+  tree: { hits: 5, verb: 'Chop tree', give: () => [['wood', 1]], last: () => [['wood', 3], ['sticks', 2]], respawn: 300, anim: 'Sword_Slash' },
+  rock: { hits: 4, verb: 'Mine rock', give: () => [['stone', 1]], last: () => [['stone', 2]], respawn: 180, anim: 'Sword_Slash', keep: 1 },
+  wood: { hits: 3, verb: 'Chop wood', give: () => [['wood', 1]], last: () => [['wood', 2]], respawn: 240, anim: 'Sword_Slash' },
+  stump: { hits: 3, verb: 'Chop stump', give: () => [['wood', 1]], last: () => [['wood', 1]], respawn: 240, anim: 'Sword_Slash', keep: 1 },
+  bush: { hits: 2, verb: 'Pick bush', give: () => [['berries', 1 + (Math.random() < 0.5)]], last: () => [['berries', 1], ['sticks', 2]], respawn: 150, anim: 'Interact', keep: 1 },
+  reed: { hits: 1, verb: 'Cut reeds', give: () => [], last: () => [['fiber', 3]], respawn: 120, anim: 'Interact' },
+  grass: { hits: 1, verb: 'Pull grass', give: () => [], last: () => [['fiber', 1]], respawn: 90, anim: 'Interact' },
+  loot: { hits: 1, verb: 'Search bag', anim: 'Interact' },
+};
+const nodes = [];
+function addNode(type, it, r, extra = {}) { nodes.push({ type, it, x: it.x, z: it.z, r, hits: 0, id: nodes.length, ...extra }); }
+// reeds along the lake shore (procedural, one draw call) -> fiber
+const REEDS = []; let reedIM = null;
+{ const g = []; for (let k = 0; k < 7; k++) { const c = new THREE.ConeGeometry(0.035, rr(1.0, 1.6), 3); const a = k / 7 * 6.28; c.translate(Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12); c.translate(0, 0.6, 0); c.rotateZ(rr(-0.15, 0.15)); g.push(c); }
+  const cat = new THREE.CylinderGeometry(0.04, 0.04, 0.22, 5); cat.translate(0.05, 1.3, 0); g.push(cat);
+  const geo = mergeGeometries(g.map(x => x.toNonIndexed())); const col = []; const P = geo.attributes.position; for (let i = 0; i < P.count; i++) { const y = P.getY(i); const c = y > 1.18 && y < 1.42 && i >= P.count - 60 ? [0.33, 0.2, 0.1] : [0.35 + y * 0.12, 0.5 + y * 0.12, 0.2]; col.push(...c); } geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
+  for (let i = 0; i < 300 && REEDS.length < 48; i++) { const a = rand() * 6.283, d = LAKE.r * rr(0.9, 1.02); const x = LAKE.x + Math.cos(a) * d, z = LAKE.z + Math.sin(a) * d; if (REEDS.some(r => Math.hypot(r.x - x, r.z - z) < 1.6)) continue;
+    const it = { x, z, tint: 1, matrix: new THREE.Matrix4().compose(new THREE.Vector3(x, heightAt(x, z) - 0.05, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand() * 6, 0)), new THREE.Vector3().setScalar(rr(0.8, 1.2))) }; REEDS.push(it); }
+  reedIM = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), REEDS.length); REEDS.forEach((it, i) => reedIM.setMatrixAt(i, it.matrix)); scene.add(reedIM);
+  instGroups.push({ im: reedIM, list: REEDS, cull: 0 }); }
+function registerNodes() {
+  for (const it of items) { if (it.free) continue; const d = it.def;
+    if (isTree(d) && !it.wall && it.size < 16) addNode('tree', it, treeR(it.size) + 0.3);
+    else if ((d === D.rock || d === D.rockC) && it.size > 0.45) addNode('rock', it, it.size * 0.45);
+    else if (d === D.log) addNode('wood', it, 0.7); else if (d === D.stump || d === D.stumpL) addNode('stump', it, 0.5);
+    else if (d === D.bushA || d === D.bushB || d === D.bushF) addNode('bush', it, 0.6);
+    else if (d === D.grass) addNode('grass', it, 0.3); }
+  REEDS.forEach(it => addNode('reed', it, 0.3));
+  // lootable backpacks: camp bag (canvas) + bag at the blood trail's end (hide)
+  const end = TRAIL[TRAIL.length - 1];
+  const near = (def, x, z) => items.filter(i => i.def === def).sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0];
+  const camp = near(D.bag, TENT.x, TENT.z), trail = near(D.hidebag, end[0], end[1]), car = near(D.hidebag, CAR.x, CAR.z);
+  if (camp) addNode('loot', camp, 0.4, { loot: [['backpack', 1], ['berries', 3]], name: 'Canvas backpack' });
+  if (trail) addNode('loot', trail, 0.4, { loot: [['backpack', 2], ['cloth', 2], ['fiber', 4]], name: 'Hide backpack' });
+  if (car && car !== trail) addNode('loot', car, 0.4, { loot: [['cloth', 3], ['sticks', 2]], name: 'Bag' });
+  for (const n of nodes) if (n.type === 'loot' && inv.looted.includes(n.id)) hideNode(n);
+  window.__nodes = nodes;
+}
+const groupOf = it => instGroups.find(g => g.list.includes(it));
+function hideNode(n) { const it = n.it; it.gone = 1;
+  if (it.nearId !== undefined) { batch.setVisibleAt(it.nearId, false); farBatch.setVisibleAt(it.midId, false); if (it.farId !== undefined) farBatch.setVisibleAt(it.farId, false); }
+  else { const g = groupOf(it); if (g) g.dirty = 1; updateLods(true); }
+  n.gone = 1; n.col = colliders.find(c => !c.seg && Math.abs(c.x - it.x) < 0.05 && Math.abs(c.z - it.z) < 0.05); if (n.col) { n.colR = n.col.r; n.col.r = 0; } }
+function showNode(n) { const it = n.it; it.gone = 0; n.gone = 0; n.hits = 0; if (n.col) n.col.r = n.colR;
+  if (it.nearId !== undefined) { batch.setMatrixAt(it.nearId, it.matrix); lastLod.set(1e9, 0, 0); } else { const g = groupOf(it); if (g) g.dirty = 1; lastLod.set(1e9, 0, 0); }
+  if (n.stumpId !== undefined) { batch.setVisibleAt(n.stumpId, false); } }
+let curNode = null, useCd = 0; const anims = [];
+function findNode() {
+  const p = player.position, f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)); let best = null, bs = 1e9;
+  for (const n of nodes) { if (n.gone || n.depleted) continue; const dx = n.x - p.x, dz = n.z - p.z, d = Math.hypot(dx, dz) - n.r; if (d > 1.6) continue; const dot = (dx * f.x + dz * f.z) / Math.max(0.01, Math.hypot(dx, dz)); const sc = d - dot * 0.8; if (dot > -0.2 && sc < bs) { bs = sc; best = n; } }
+  return best;
+}
+function give(list) { for (const [id, k] of list) { if (!k) continue; const left = inv.add(id, k); if (k - left > 0) ui.pop(id, k - left); if (left) ui.pop(null, 0, 'Inventory full'); } }
+function interact() {
+  if (!hero || dead || performance.now() < useCd || ui.open()) return; const n = curNode; if (!n) return; const T = NODE_T[n.type];
+  useCd = performance.now() + (T.anim === 'Interact' ? 700 : 600); heroFacing = Math.atan2(n.x - player.position.x, n.z - player.position.z); attackT = 0.4; attackHit = true; // reuse swing lock
+  hero.play(T.anim, { once: true, fade: 0.08, speed: T.anim === 'Interact' ? 1.4 : 1.35 }); heroHurtT = 0.55;
+  if (n.type === 'loot') { for (const [id, k] of n.loot) { if (id === 'backpack') { if (inv.equipBackpack(k)) ui.pop(k === 1 ? 'backpack_canvas' : 'backpack_hide', 1); else ui.pop(null, 0, 'Already have a better backpack'); } else give([[id, k]]); }
+    inv.looted.push(n.id); inv.save(); hideNode(n); return; }
+  n.hits++;
+  if (n.type === 'tree') shake(n);
+  if (n.hits < T.hits) { give(T.give()); return; }
+  give(T.last());
+  if (n.type === 'tree') fell(n);
+  else if (T.keep) { n.depleted = 1; setTimeout(() => { n.depleted = 0; n.hits = 0; }, T.respawn * 1000); }
+  else { hideNode(n); setTimeout(() => showNode(n), T.respawn * 1000); }
+}
+const _gm = new THREE.Matrix4(), _gq = new THREE.Quaternion(), _gv = new THREE.Vector3();
+function shake(n) { if (n.it.nearId === undefined) return; anims.push({ n, t: 0, kind: 'shake', axis: new THREE.Vector3(rr(-1, 1), 0, rr(-1, 1)).normalize() }); n.it.anim = 1; batch.setVisibleAt(n.it.nearId, true); }
+function fell(n) { const it = n.it; n.gone = 1; const away = new THREE.Vector3(it.x - player.position.x, 0, it.z - player.position.z).normalize(); anims.push({ n, t: 0, kind: 'fall', axis: new THREE.Vector3(away.z, 0, -away.x) });
+  it.anim = 1; batch.setVisibleAt(it.nearId, true); farBatch.setVisibleAt(it.midId, false); if (it.farId !== undefined) farBatch.setVisibleAt(it.farId, false);
+  n.col = colliders.find(c => !c.seg && Math.abs(c.x - it.x) < 0.05 && Math.abs(c.z - it.z) < 0.05); if (n.col) { n.colR = n.col.r; n.col.r = Math.min(n.col.r, 0.35); }
+  // stump stays
+  const G = batchGeo.get(D.stump); if (G) { if (n.stumpId === undefined) { n.stumpId = batch.addInstance(G.near); const h = G.bb.max.y - G.bb.min.y, s = (treeR(it.size) * 2.6) / Math.max(G.bb.max.x - G.bb.min.x, 0.01);
+      batch.setMatrixAt(n.stumpId, new THREE.Matrix4().compose(new THREE.Vector3(it.x, heightAt(it.x, it.z) - G.bb.min.y * s - 0.05, it.z), new THREE.Quaternion(), new THREE.Vector3(s, Math.min(s, 0.6 / h), s))); batch.setColorAt(n.stumpId, _c.setScalar(0.95)); }
+    batch.setVisibleAt(n.stumpId, true); }
+  setTimeout(() => { it.anim = 0; showNode(n); }, NODE_T.tree.respawn * 1000);
+}
+function tickGather(dt) {
+  for (let i = anims.length - 1; i >= 0; i--) { const a = anims[i], it = a.n.it; a.t += dt; const base = _gv.set(it.x, heightAt(it.x, it.z), it.z);
+    let ang = 0, sink = 0; if (a.kind === 'shake') { ang = Math.sin(a.t * 40) * 0.04 * Math.max(0, 1 - a.t / 0.35); if (a.t > 0.35) { anims.splice(i, 1); if (!a.n.gone) { it.anim = 0; batch.setMatrixAt(it.nearId, it.matrix); lastLod.set(1e9, 0, 0); } continue; } }
+    else { const k = Math.min(1, a.t / 1.6); ang = (Math.PI / 2 - 0.08) * k * k; if (a.t > 3.5) sink = (a.t - 3.5) * 0.8; if (a.t > 6) { anims.splice(i, 1); batch.setVisibleAt(it.nearId, false); continue; } }
+    _gq.setFromAxisAngle(a.axis, ang); _gm.makeTranslation(-base.x, -base.y, -base.z).premultiply(new THREE.Matrix4().makeRotationFromQuaternion(_gq)).premultiply(new THREE.Matrix4().makeTranslation(base.x, base.y - sink, base.z));
+    batch.setMatrixAt(it.nearId, _gm.clone().multiply(it.matrix)); }
+  if (!hero) return; const n = findNode(); curNode = n;
+  ui.prompt(n && !ui.open() ? (isTouchUI ? '' : '[E] ') + (n.type === 'loot' ? 'Search ' + n.name : NODE_T[n.type].verb) + (NODE_T[n.type].hits > 1 && n.type !== 'loot' ? ` (${n.hits}/${NODE_T[n.type].hits})` : '') : '');
+}
+window.__inv = inv; window.__interact = () => { const r = { useCd, dead, open: ui.open(), cur: curNode && curNode.type, hero: !!hero }; interact(); return r; }; window.__ui = ui;
+
 loadWorld();
 loadCharacters().then(() => { setupHero(); if (Q.has('zdemo')) { const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)); for (let i = 0; i < 4; i++) { const p = player.position.clone().addScaledVector(f, 3.5 + i * 1.6).add(new THREE.Vector3((i - 1.5) * 1.3, 0, 0)); spawnZombie(p.x, p.z); } } else spawnWave(); window.__charsReady = true; window.__attack = heroAttack; window.__zombies = zombies; window.__hero = () => hero; console.log('[BAM] characters ready'); }).catch(e => console.error('[BAM] characters failed', e));
 animate();
