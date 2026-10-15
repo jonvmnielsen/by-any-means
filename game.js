@@ -672,25 +672,66 @@ function bakeCharacter(root, recolor) {
     }
     const col = recolor(m.material); const ca = new Float32Array(P.count * 3); for (let i = 0; i < P.count; i++) ca.set([col.r, col.g, col.b], i * 3);
     g.setAttribute('color', new THREE.BufferAttribute(ca, 3));
+    const nm = m.material.name || ''; g.setAttribute('kind', new THREE.BufferAttribute(new Float32Array(P.count).fill(/^eye$/i.test(nm) ? 2 : /skin/i.test(nm) ? 1 : /eyebrow|hair|moustache/i.test(nm) ? 3 : 0), 1));
     g.setAttribute('part', new THREE.BufferAttribute(new Float32Array(P.count).fill(PART_ID(m.name + ' ' + (m.parent?.name || ''))), 1));
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color', 'skinIndex', 'skinWeight', 'part'].includes(k)) g.deleteAttribute(k);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color', 'skinIndex', 'skinWeight', 'part', 'kind'].includes(k)) g.deleteAttribute(k);
     geos.push(g);
   }
   meshes.forEach(m => m.removeFromParent());
-  const sm = new THREE.SkinnedMesh(mergeGeometries(geos), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const mg = mergeGeometries(geos); if (recolor.post) recolor.post(mg);
+  const sm = new THREE.SkinnedMesh(mg, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  if (recolor.post) sm.material.onBeforeCompile = eyeGlow;
   sm.bind(new THREE.Skeleton(bones, ibm0), new THREE.Matrix4());
   sm.castShadow = true; sm.frustumCulled = false; sm.name = 'body';
   bones[0].parent.add(sm);
   const box = new THREE.Box3().setFromBufferAttribute(sm.geometry.attributes.position);
   return { root, height: box.max.y - box.min.y, minY: box.min.y };
 }
-const ZOMBIE_SKIN = [new THREE.Color(0x7d9a52), new THREE.Color(0x8fa06a), new THREE.Color(0x6e8a58), new THREE.Color(0x9aa078)];
-function zombieRecolor(skin) {
-  return mat => { const c = mat.color.clone(), nm = mat.name || '';
-    if (/skin/i.test(nm)) return skin.clone().convertSRGBToLinear();
-    if (/eye$/i.test(nm)) return new THREE.Color(0.55, 0.08, 0.04);
-    const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, hsl.s * 0.45, hsl.l * 0.8); // faded, dirty clothes
-    return c.lerp(new THREE.Color(0.05, 0.035, 0.02), 0.25); };
+// Infected humans: diverse natural skin tones; zombie signs = wounds, bites, torn clothes, blood, pale/grey patches,
+// solid glowing yellow eyes. All baked into vertex colours at variant creation (zero runtime cost, 1 draw call).
+const HUMAN_SKIN = [0xf3d0b5, 0xe8b894, 0xd9a07a, 0xc28660, 0xa86e48, 0x8d5a3b, 0x6e4430, 0x553324, 0x3d2519].map(c => new THREE.Color(c).convertSRGBToLinear());
+const C_ = c => new THREE.Color(c).convertSRGBToLinear();
+const PALE = C_(0xb9bcb0), GREYROT = C_(0x8c9284), BLOOD = C_(0x8a1410), DRIED = C_(0x3a0a07), FLESH = C_(0xc0402e), EYE = new THREE.Color(1.0, 0.82, 0.05);
+function eyeGlow(sh) { // kind==2 (eyes) -> emissive yellow so they read at distance
+  sh.vertexShader = 'attribute float kind;\nvarying float vGlow;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = step(1.5, kind) * step(kind, 2.5);');
+  sh.fragmentShader = 'varying float vGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vec3(1.0, 0.78, 0.05) * vGlow * 1.4;');
+}
+function zombieRecolor(seed) {
+  const R = mulberry32(seed * 7919 + 13), r = (a, b) => a + R() * (b - a);
+  const skin = HUMAN_SKIN[Math.floor(R() * HUMAN_SKIN.length)].clone();
+  const pallor = R() < 0.4 ? r(0.25, 0.55) : r(0, 0.15); skin.lerp(PALE, pallor);
+  const CLOTH = [0x3b5b8c, 0x2f4f6f, 0x5d6b4a, 0x7a7a7a, 0xc9c0a8, 0x8a5a3a, 0x4a3b5c, 0xe6e2d6, 0x2b2b2b, 0x8c2f2f, 0x3f6e6a, 0xb08a3e]; const cmap = {}, clothSat = r(0.5, 0.9), clothL = r(0.65, 1.0), dirt = r(0.12, 0.3);
+  const f = mat => { const c = mat.color.clone(), nm = mat.name || '';
+    if (/skin/i.test(nm)) return skin.clone();
+    if (/^eye$/i.test(nm)) return EYE.clone();
+    if (/^white$/i.test(nm) && false) return EYE.clone();
+    if (!/eyebrow|hair|moustache|black/i.test(nm) && R() < 0.7) { if (!cmap[nm]) cmap[nm] = C_(CLOTH[Math.floor(R() * CLOTH.length)]); c.copy(cmap[nm]); } const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, hsl.s * clothSat, hsl.l * clothL);
+    return c.lerp(new THREE.Color(0.05, 0.035, 0.02), dirt); };
+  f.post = g => { // wound / bite / tear / stain / patch pass in bind space
+    const P = g.attributes.position, C = g.attributes.color, K = g.attributes.kind, n = P.count;
+    g.computeBoundingBox(); const bb = g.boundingBox, H = bb.max.y - bb.min.y;
+    const pick = (want) => { for (let t = 0; t < 200; t++) { const i = Math.floor(R() * n); const y = (P.getY(i) - bb.min.y) / H; if (want(K.getX(i), y)) return new THREE.Vector3().fromBufferAttribute(P, i); } return null; };
+    const marks = [];
+    const nW = 2 + Math.floor(R() * 2); for (let k = 0; k < nW; k++) { const p = pick((kd, y) => kd !== 2 && y > 0.2); if (p) marks.push({ p, r: H * r(0.03, 0.05), t: 'wound', sy: r(0.6, 1.6) }); }
+    const nB = R() < 0.75 ? 1 + Math.floor(R() * 2) : 0; for (let k = 0; k < nB; k++) { const p = pick((kd, y) => kd === 1 && y > 0.45); if (p) marks.push({ p, r: H * r(0.025, 0.04), t: 'bite', sy: 1 }); }
+    const nT = 1 + Math.floor(R() * 2); for (let k = 0; k < nT; k++) { const p = pick((kd, y) => kd === 0 && y > 0.15 && y < 0.8); if (p) marks.push({ p, r: H * r(0.04, 0.065), t: 'tear', sy: r(0.7, 1.4) }); }
+    const nS = Math.floor(R() * 3); for (let k = 0; k < nS; k++) { const p = pick((kd, y) => kd !== 2 && y > 0.35 && y < 0.85); if (p) marks.push({ p, r: H * r(0.03, 0.05), t: 'stain', sy: 0.35 }); }
+    const patch = R() < 0.5 ? r(0.3, 0.7) : 0, pf = r(6, 11) / H, po = r(0, 100);
+    const v = new THREE.Vector3(), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const kd = K.getX(i); if (kd === 2 || kd === 3) continue; v.fromBufferAttribute(P, i); c.fromBufferAttribute(C, i);
+      if (kd === 1 && patch) { const nz = Math.sin(v.x * pf + po) * Math.sin(v.y * pf * 0.8 + po * 2) * Math.sin(v.z * pf * 1.2); if (nz > 0.15) c.lerp(GREYROT, patch * Math.min(1, (nz - 0.15) * 4)); }
+      for (const m of marks) {
+        const dx = v.x - m.p.x, dy = (v.y - m.p.y) * (m.t === 'stain' ? m.sy : 1 / m.sy), dz = v.z - m.p.z; const d = Math.sqrt(dx * dx + dy * dy + dz * dz) / m.r; if (d > 1) continue;
+        if (m.t === 'wound') c.copy(d < 0.45 ? FLESH : BLOOD).lerp(DRIED, d < 0.45 ? 0.2 : (d - 0.45));
+        else if (m.t === 'bite') c.copy(d > 0.45 && d < 0.85 ? DRIED : d <= 0.45 ? FLESH : c.lerp(BLOOD, 0.5));
+        else if (m.t === 'tear') { if (kd === 0) c.copy(d < 0.75 ? skin : BLOOD); else if (d < 0.6) c.lerp(BLOOD, 0.6); }
+        else c.lerp(DRIED, 0.7 * (1 - d * 0.6));
+      }
+      C.setXYZ(i, c.r, c.g, c.b);
+    }
+  };
+  return f;
 }
 const CHAR = { player: null, zombies: [], clips: null };
 const Z_TYPES = ['casual', 'farmer', 'worker'];
@@ -744,16 +785,16 @@ function setupHero() {
 const zombies = []; const zombieCountEl = document.getElementById('zombieCount'); let remaining = 0, wave = 0;
 const zBase = []; // baked variants (type x skin)
 function zombieVariant(i) {
-  if (!zBase[i]) { const z = CHAR.zombies[i % CHAR.zombies.length]; const root = SkeletonUtils.clone(z.gltf.scene); zBase[i] = bakeCharacter(root, zombieRecolor(ZOMBIE_SKIN[i % ZOMBIE_SKIN.length])); }
+  if (!zBase[i]) { const z = CHAR.zombies[i % CHAR.zombies.length]; const root = SkeletonUtils.clone(z.gltf.scene); zBase[i] = bakeCharacter(root, zombieRecolor(i + 1)); }
   return zBase[i];
 }
 function spawnZombie(x, z) {
-  const vi = Math.floor(rand() * 6), V = zombieVariant(vi);
+  const vi = Math.floor(rand() * 18), V = zombieVariant(vi);
   const runner = rand() < 0.15;
   const a = new Actor(V.root, V.height, V.minY, rr(1.65, 1.95));
-  a.body.material = a.body.material.clone(); a.body.material.color.setScalar(rr(0.82, 1.05));
+  { const ob = a.body.material.onBeforeCompile; a.body.material = a.body.material.clone(); a.body.material.onBeforeCompile = ob; a.body.material.color.setScalar(rr(0.9, 1.05)); }
   a.obj.position.set(x, heightAt(x, z), z); a.obj.rotation.y = rand() * 6.28;
-  Object.assign(a, { hp: runner ? 2 : 3, speed: runner ? rr(2.6, 3.2) : rr(0.8, 1.35), runner, state: 'idle', stateT: 0, atkCd: 0, hitT: 0, lean: rr(0.15, 0.35), armUp: rr(0.75, 1.1), wander: rand() * 6.28, kb: new THREE.Vector3() });
+  Object.assign(a, { hp: runner ? 2 : 3, speed: runner ? rr(2.6, 3.2) : rr(0.8, 1.35), runner, state: 'idle', stateT: 0, atkCd: 0, hitT: 0, lean: rr(0.15, 0.35), limp: rr(-1, 1), tilt: rr(-0.35, 0.35), lurchF: rr(1.4, 2.4), ph: rand() * 6.28, armUp: rr(0.75, 1.1), wander: rand() * 6.28, kb: new THREE.Vector3() });
   a.play('Idle_Neutral', { speed: rr(0.6, 0.9) }); a.mixer.setTime(rand() * 3);
   zombies.push(a); remaining++; updateCount();
 }
@@ -774,6 +815,10 @@ function zombiePosture(a, w) {
   a.model.updateMatrixWorld(true);
   bendBone(a.bones['Torso'] || a.bones['Chest'], right, a.lean * w);
   bendBone(a.bones['Neck'], right, 0.25 * w);
+  const t = performance.now() / 1000 * a.lurchF + a.ph, fwdA = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+  bendBone(a.bones['Torso'] || a.bones['Chest'], fwdA, (Math.sin(t) * 0.12 + a.limp * 0.1) * w); // side-to-side lurch/limp roll
+  bendBone(a.bones['Torso'] || a.bones['Chest'], right, Math.max(0, Math.sin(t * 2)) * 0.12 * w); // forward lurch pulses
+  bendBone(a.bones['Head'], fwdA, a.tilt * w);
   a.model.updateMatrixWorld(true);
   bendBone(a.bones['UpperArmL'], right, -a.armUp * w); bendBone(a.bones['UpperArmR'], right, -a.armUp * w * 0.9);
 }
@@ -833,7 +878,7 @@ function updateZombie(z, dt, t) {
   if (aware) {
     if (z.state !== 'chase') { z.state = 'chase'; z.play(z.runner ? 'Run' : 'Walk', { speed: z.runner ? 0.95 : z.speed * 0.55, fade: 0.4 }); }
     if (d < 1.5 && z.atkCd <= 0) { z.state = 'attack'; z.stateT = 0; z.dealt = false; z.play(rand() < 0.5 ? 'Punch_Left' : 'Punch_Right', { once: true, fade: 0.12, speed: 0.85 }); return 0.4; }
-    if (d > 1.2) { z.obj.position.addScaledVector(to.normalize(), z.speed * dt); face(z, to, dt * 3); }
+    if (d > 1.2) { const lur = z.runner ? 1 : 0.55 + 0.9 * Math.max(0, Math.sin((performance.now() / 1000 * z.lurchF + z.ph) * 2)); z.obj.position.addScaledVector(to.normalize(), z.speed * lur * dt); face(z, to, dt * 3); }
   } else {
     if (z.state !== 'idle' && z.state !== 'wander') z.state = 'idle';
     z.wander += (Math.sin(t * 0.3 + z.lean * 50) * 0.5) * dt;
@@ -925,6 +970,7 @@ function animate() {
   camPos.y = Math.max(camPos.y, heightAt(camPos.x, camPos.z) + 0.6);
   camera.position.copy(camPos); camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.55, 0)).addScaledVector(right, 0.35));
   if (VIEW === 'zside') { const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), r = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); const c = player.position.clone().addScaledVector(f, 2.5); camera.position.copy(c).addScaledVector(r, 5).add(new THREE.Vector3(0, 1.4, 0)); camera.lookAt(c.x, c.y + 1, c.z); }
+  if (VIEW === 'zface' && zombies.length) { const z = zombies[(window.__zi | 0) % zombies.length], ry = z.obj.rotation.y, hz = z.obj.position; const h = z.bones['Head'] ? z.bones['Head'].getWorldPosition(new THREE.Vector3()) : hz.clone().add(new THREE.Vector3(0, 1.6, 0)); camera.position.set(h.x + Math.sin(ry + 0.5) * 1.5, h.y - 0.15, h.z + Math.cos(ry + 0.5) * 1.5); camera.lookAt(h.x, h.y - 0.45, h.z); }
   if (VIEWS[VIEW]) { const [a, b] = VIEWS[VIEW]; camera.position.set(a[0], heightAt(a[0], a[2]) + a[1], a[2]); camera.lookAt(b[0], heightAt(b[0], b[2]) + b[1], b[2]); }
 
   // atmosphere
