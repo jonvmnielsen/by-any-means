@@ -289,6 +289,7 @@ const D = {
   pallet: { url: E + 'pallet.glb', fit: 'len', size: [1.2, 1.2], shadow: true },
   gascan: { url: E + 'gascan.glb', fit: 'h', size: [0.45, 0.45], shadow: true },
   bag: { url: E + 'bag_canvas.glb', fit: 'h', size: [0.6, 0.6], shadow: true },
+  hidebag: { url: E + 'bag_hide_forge.glb', fit: 'h', size: [0.5, 0.5], shadow: true },
   lantern: { url: E + 'lantern_standing.glb', fit: 'h', size: [0.45, 0.45], shadow: false, emissive: true },
   fence: { url: E + 'fence_wood_straight.glb', fit: 'len', size: [2.0, 2.0], shadow: true },
 };
@@ -320,13 +321,13 @@ item(D.stumpL, WOOD.x + 2.0, WOOD.z + 0.6, { size: 0.65, tint: 1 }); colliders.p
 // abandoned car with spilled crates, broken fence along the west trail
 placed.push({ x: CAR.x, z: CAR.z, r: 4 });
 item(D.car, CAR.x, CAR.z, { ry: CAR.ry, tilt: 0.03, tiltZ: -0.05 }); colliders.push({ x: CAR.x, z: CAR.z, r: 1.4 }, { x: CAR.x + Math.sin(CAR.ry) * 1.5, z: CAR.z + Math.cos(CAR.ry) * 1.5, r: 1.2 }, { x: CAR.x - Math.sin(CAR.ry) * 1.5, z: CAR.z - Math.cos(CAR.ry) * 1.5, r: 1.2 });
-item(D.crate, CAR.x + 2.6, CAR.z + 1.4, { ry: 0.7, tilt: 0.3, tint: 0.9 }); item(D.gascan, CAR.x - 2.2, CAR.z + 2.0, { tilt: 1.45, ry: 1 }); item(D.bag, CAR.x + 1.4, CAR.z + 2.8, { tilt: 1.2, ry: 0.4 });
+item(D.crate, CAR.x + 2.6, CAR.z + 1.4, { ry: 0.7, tilt: 0.3, tint: 0.9 }); item(D.gascan, CAR.x - 2.2, CAR.z + 2.0, { tilt: 1.45, ry: 1 }); item(D.hidebag, CAR.x + 1.4, CAR.z + 2.8, { tilt: 1.2, ry: 0.4 });
 for (let i = 0; i < 7; i++) { if (i === 3 || i === 5) continue; const x = CAR.x - 6 + i * 2.0 * 0.95, z = CAR.z - 4.2 - i * 0.6; item(D.fence, x, z, { ry: Math.atan2(2.0 * 0.95, -0.6) - Math.PI / 2 + rr(-0.06, 0.06), tilt: i === 4 ? 0.35 : rr(-0.06, 0.06), tiltZ: i === 6 ? 0.5 : 0, tint: rr(0.8, 1.0) }); }
 
 // story clue: someone was dragged from the car into the north-west woods
 const TRAIL = [];
 { let x = CAR.x + 2.5, z = CAR.z - 1.5, a = -2.3; for (let i = 0; i < 26; i++) { a += rr(-0.25, 0.25); x += Math.cos(a) * 0.9; z += Math.sin(a) * 0.9; TRAIL.push([x, z, rr(0.25, 0.6) * (1 - i / 40), rand() * 6.28]); }
-  const end = TRAIL[TRAIL.length - 1]; item(D.bag, end[0] + 0.6, end[1] + 0.3, { tilt: 1.3, ry: 0.8, tint: 0.85 }); item(D.lantern, end[0] - 0.8, end[1] + 0.5, { tiltZ: 1.45, ry: 2, yOff: 0.15 }); }
+  const end = TRAIL[TRAIL.length - 1]; item(D.hidebag, end[0] + 0.6, end[1] + 0.3, { tilt: 1.3, ry: 0.8, tint: 0.85 }); item(D.lantern, end[0] - 0.8, end[1] + 0.5, { tiltZ: 1.45, ry: 2, yOff: 0.15 }); }
 const CLUES = [[CAMP.x + 6.5, CAMP.z + 5.5, 0.35, 0], [CAMP.x + 7.2, CAMP.z + 6.6, 0.25, 1]];
 // ruined cabin on the north trail (built from log instances below)
 placed.push({ x: CABIN.x, z: CABIN.z, r: 5.5 });
@@ -340,7 +341,10 @@ for (let i = 0; i < 10; i++) { const a = rand() * 6.28, d = rr(5, 8); item(rand(
 placed.push({ x: GIANT.x, z: GIANT.z, r: 7 });
 const GDIR = new THREE.Vector3(0, 1, 0).applyEuler(new THREE.Euler(-Math.PI / 2 + 0.05, GIANT.ry, 0, 'YXZ'));
 { const ry = GIANT.ry, fdir = GDIR;
-  item(D.pine[1], GIANT.x, GIANT.z, { ry, tilt: -Math.PI / 2 + 0.05, size: 15, free: true, yOff: 0.9, tint: 0.82 });
+  // bare trunk (stretched stump mesh lying along GDIR) + snapped top section + a few dead limbs: reads as a trunk, not a foliage blob
+  item(D.stumpL, GIANT.x, GIANT.z, { ry, tilt: -Math.PI / 2 + 0.05, size: 13, stretch: [0.12, 1, 0.12], free: true, yOff: 0.85, tint: 0.8 });
+  const tp = 13.6; item(D.stumpL, GIANT.x + fdir.x * tp, GIANT.z + fdir.z * tp, { ry: ry + 0.35, tilt: -Math.PI / 2 + 0.02, size: 6, stretch: [0.17, 1, 0.17], free: true, yOff: 0.6, tint: 0.78 });
+  for (let k = 0; k < 5; k++) { const t = 4 + k * 2.3, sd = k % 2 ? 1 : -1; item(D.log, GIANT.x + fdir.x * t - fdir.z * sd * 1.2, GIANT.z + fdir.z * t + fdir.x * sd * 1.2, { ry: ry + sd * rr(0.6, 1.1), tilt: rr(0.1, 0.5), size: rr(1.6, 2.6), free: true, yOff: rr(0.2, 0.7), tint: 0.75 }); }
   for (let k = 0; k < 6; k++) colliders.push({ x: GIANT.x + fdir.x * k * 2.2, z: GIANT.z + fdir.z * k * 2.2, r: k < 2 ? 0.9 : 1.8 });
   item(D.stumpL, GIANT.x - fdir.x * 0.6, GIANT.z - fdir.z * 0.6, { ry, tilt: -Math.PI / 2 + 0.25, size: 1.0, stretch: [1.6, 1, 1.6], free: true, yOff: 1.1, tint: 0.9 });
   for (let i = 0; i < 6; i++) item(D.rockC, GIANT.x - fdir.x * rr(1, 2) + rr(-1, 1), GIANT.z - fdir.z * rr(1, 2) + rr(-1, 1), { size: rr(0.25, 0.5), sink: 0.2 }); }
@@ -361,7 +365,7 @@ for (let i = 0; i < 9000 && placed.length < 520; i++) {
 // tree wall around the playable area hides the world edge
 for (let i = 0; i < 2200; i++) { const a = rand() * 6.283, d = rr(WORLD_R - 10, WORLD_R + 14), x = Math.cos(a) * d, z = Math.sin(a) * d;
   if (lakeN(x, z) < 1.3 || pathDist(x, z) < 2) continue; let ok = true; for (const p of placed) if ((x - p.x) ** 2 + (z - p.z) ** 2 < 2.8 * 2.8) { ok = false; break; }
-  if (!ok) continue; placed.push({ x, z, r: 2.8 }); const def = rand() < 0.65 ? pick(D.pine) : pick(D.broad); item(def, x, z, { size: rr(def.size[1] * 0.9, def.size[1] * 1.25), tint: rr(0.7, 0.9) }); if (d < WORLD_R) colliders.push({ x, z, r: 0.55 }); }
+  if (!ok) continue; placed.push({ x, z, r: 2.8 }); const def = rand() < 0.65 ? pick(D.pine) : pick(D.broad); item(def, x, z, { size: rr(def.size[1] * 0.9, def.size[1] * 1.25), tint: rr(0.7, 0.9) }).wall = 1; if (d < WORLD_R) colliders.push({ x, z, r: 0.55 }); }
 const treeSpots = placed.filter(p => p.r >= 2.6 && p.r < 4);
 // forest-edge undergrowth: bushes + ferns around trees, denser at the edge
 for (let i = 0; i < 520; i++) {
@@ -446,8 +450,9 @@ async function buildBatch() {
   let V = 0, I = 0, FV = 0, FI = 0; const geos = [];
   const one = l => l.length > 1 ? mergeGeometries(l) : l[0];
   for (const r of res) { if (!r) continue; const [d, g, f] = r;
-    const gn = one(keepAttrs(collect(g.scene, 1).map(x => x.g), attrs)), gm = one(keepAttrs(collect(g.scene, 2).map(x => x.g), attrs));
+    let gn = one(keepAttrs(collect(g.scene, 1).map(x => x.g), attrs)), gm = one(keepAttrs(collect(g.scene, 2).map(x => x.g), attrs));
     let gf = gm; if (f) { const l = collect(f.scene).map(x => x.g); l.forEach(x => x.computeVertexNormals()); gf = one(keepAttrs(l, attrs)); }
+    if (d.url.includes('/rocks/')) { const flat = q => { const n = q.toNonIndexed(); n.computeVertexNormals(); n.setIndex([...Array(n.attributes.position.count).keys()]); return n; }; gn = flat(gn); gm = gf = flat(gm); } // faceted rocks
     gn.computeBoundingBox(); geos.push([d, gn, gm, gf]);
     V += gn.attributes.position.count; I += gn.index.count; FV += gm.attributes.position.count + gf.attributes.position.count; FI += gm.index.count + gf.index.count; }
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }); addWind(mat);
@@ -627,7 +632,7 @@ function updateLods(force) {
   if (batch) for (const it of batchItems) {
     if (it.nearId === undefined) continue; const d = Math.hypot(it.x - p.x, it.z - p.z);
     const nearD = it.big ? (isMobile ? 18 : 24) : 16;
-    const near = d < nearD, inRange = d < (it.big ? 112 : 70), mid = !near && inRange && (it.farId === undefined || d < 50);
+    const near = d < (it.wall ? 0 : nearD), inRange = d < (it.big ? 112 : 70), mid = !near && inRange && (it.farId === undefined || d < (it.wall ? (isMobile ? 22 : 34) : 50));
     batch.setVisibleAt(it.nearId, near); farBatch.setVisibleAt(it.midId, mid);
     if (it.farId !== undefined) farBatch.setVisibleAt(it.farId, !near && !mid && inRange);
   }
@@ -846,7 +851,7 @@ function resolveHeroHit() {
 function hitZombie(z, dir) {
   z.hp--; bloodBurst(z.obj.position.clone().add(new THREE.Vector3(0, 1.4, 0)), dir);
   z.kb.copy(dir).multiplyScalar(z.hp > 0 ? 3.2 : 4.5);
-  if (z.hp <= 0) { z.state = 'dead'; z.stateT = 0; z.fallDir = dir.clone(); z.play('Death', { once: true, fade: 0.1, speed: rr(0.9, 1.2) }); remaining--; updateCount();
+  if (z.hp <= 0) { if (rand() < 0.4) { const nm = pick(['LowerArmL', 'LowerArmR', 'UpperArmL', 'UpperArmR']); z.lost = z.bones[nm]; if (z.lost) { const p = z.lost.getWorldPosition(new THREE.Vector3()); bloodBurst(p, dir, 30); } } z.state = 'dead'; z.stateT = 0; z.fallDir = dir.clone(); z.play('Death', { once: true, fade: 0.1, speed: rr(0.9, 1.2) }); remaining--; updateCount();
     if (remaining <= 0) { msg('Area clear for now. More will come...'); setTimeout(spawnWave, 9000); } }
   else { z.state = 'hit'; z.stateT = 0; z.play(rand() < 0.5 ? 'HitRecieve' : 'HitRecieve_2', { once: true, fade: 0.06 }); }
 }
@@ -958,6 +963,7 @@ function animate() {
     const w = updateZombie(z, dt, t);
     collide(z.obj.position, 0.35); z.obj.position.y = heightAt(z.obj.position.x, z.obj.position.z) - (z.state === 'dead' && z.stateT > 10 ? (z.stateT - 10) * 0.25 : 0);
     const dist = z.obj.position.distanceTo(camera.position);
+    if (z.lost) z.lost.scale.setScalar(0.001); // limb loss: collapse the severed limb's bone chain
     if (z.tickAnim(dt, dist) && dist < 30) zombiePosture(z, z.runner ? w * 0.4 : w);
     z.obj.visible = dist < 95;
   }
