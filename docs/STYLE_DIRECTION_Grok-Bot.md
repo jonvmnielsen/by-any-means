@@ -57,11 +57,13 @@ Det betyder:
 ## 5. Konkrete asset-specs
 
 ### 5.1 Trekantbudgetter (LOD0 / LOD1 / LOD2)
+*Revideret 18/10 aften (Jon): mobil-loftet på 9k for figurer er droppet. Helte, NPC'er og spiller får 20–30k i LOD0 med 2048²-teksturer og normal-map; LOD1/LOD2 bærer ydelsen på afstand og i horder. Øvrige rækker er uændrede.*
+
 | Asset-type | LOD0 desktop | LOD0 mobil | LOD1 | LOD2 / fjernt |
 |---|---|---|---|---|
-| Spiller | 15–20k | 10–12k | 5k | – |
-| NPC / militær / raider | 10–14k | 7–9k | 3,5k | 800 |
-| Zombie (standard) | 8–12k | 6–8,5k (vores `_lo` ligger på ~8,5k) | 3k | 600–800 / impostor |
+| Spiller | 22–30k | samme (ingen mobil-loft) | 8k | 1,5k |
+| NPC / militær / raider / overlevende (hero) | **20–30k** (forge-mål 24k) | samme (ingen mobil-loft) | 7,5k | 1,5k |
+| Zombie (standard) | 16–24k | samme | 6k | 1k / impostor |
 | Horde-zombie (>40 m) | – | – | – | 300–600, instanced, ingen dismemberment |
 | Dyr, lille (kanin, fugl) | 2–3k | 1,5k | 600 | – |
 | Dyr, stort (hjort, ulv, bjørn) | 6–9k | 4–6k | 2k | 500 |
@@ -73,15 +75,15 @@ Det betyder:
 | Bygningsmodul (væg, gulv, tag) | 200–2k | samme | 150–500 | merged/batched |
 | Træ | 3–5k | 1,5–3k | 800 | billboard |
 
-**Ramme for scenen på mobil**: ≤ 300–500k synlige trekanter, ≤ 100–150 draw calls ([three.js-præstationsråd](https://masterallarts.com/learn/threejs-from-zero/09-performance-instancing-lod/), [BatchedMesh](https://threejs.org/docs/pages/BatchedMesh.html), [MDN WebGL best practices](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices)). Figurer = **2 draw calls** (krop + caps), som vi allerede har.
+**Ramme for scenen på mobil**: ≤ 300–500k synlige trekanter, ≤ 100–150 draw calls ([three.js-præstationsråd](https://masterallarts.com/learn/threejs-from-zero/09-performance-instancing-lod/), [BatchedMesh](https://threejs.org/docs/pages/BatchedMesh.html), [MDN WebGL best practices](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices)). Figurer = **1 draw call** i hvilestilling (én skinnet mesh, ét materiale; kapperne er egne noder, som kun tegnes efter et snit). Nære figurer bruger LOD0, resten LOD1/LOD2, så budgettet for hele scenen holder, selv om LOD0 er steget.
 
 ### 5.2 Teksturer og materialer
-- **Én albedo-textur per figur** (1024² desktop, 512² mobil), med malede/bagte AO og skygger. **Ingen normal- eller ORM-maps** på figurer (sparer 2/3 af texturhukommelsen). Eventuel normalmap kun på spillerens våben.
+- **Ét tekstursæt per figur (revideret 18/10 aften):** albedo + normal + ORM (R = AO, G = ruhed, B = metal), 2048² på LOD0, 1024² på LOD1, 512² (kun albedo) på LOD2. Alt bages i Blender Cycles fra en **high-detail-kilde** (Pixal3D i fuld opløsning med sømme, folder, rynker og rigtige øjeæbler, gerne millioner af trekanter) ned på den rene spil-mesh. Normal-mappet bærer detaljen, som trekanterne ikke kan. Albedoen har lidt AO bagt ind, så figuren også står godt med simpel shading.
 - **Fælles zombie-atlas** (2048² med 4 kropsvarianter), plus variation via `tint`-uniform og vertex-farver (findes: per-zombie tint) → mange forskellige zombier med få teksturer.
 - **Fælles gore-atlas** 512²: kødcap, knoglering, sår-maske, blodspray, decal-sprites. Deles af alle figurer.
 - **Miljø**: trim-sheets/palet-atlas 1024–2048² per biom. Props deler atlas → `BatchedMesh`/merge.
-- **Komprimering**: KTX2/Basis ([KTX2Loader](https://threejs.org/docs/pages/KTX2Loader.html)) og meshopt-komprimeret geometri ([meshoptimizer/gltfpack](https://github.com/zeux/meshoptimizer)). Mål: < 2 MB per figur-GLB på mobil.
-- **Shading**: `MeshLambertMaterial`/simpel custom shader (som nu) med rim-lys til læsbarhed. PBR (`MeshStandardMaterial`) kun til få hero-props.
+- **Komprimering**: KTX2/Basis ([KTX2Loader](https://threejs.org/docs/pages/KTX2Loader.html)) på alle figurteksturer (forge laver `_LODn_ktx2.glb`: albedo og ORM i ETC1S, normal i UASTC, mipmaps) og senere meshopt-komprimeret geometri ([meshoptimizer/gltfpack](https://github.com/zeux/meshoptimizer)). KTX2 bliver komprimeret på GPU'en (ca. 1/4–1/8 af RGBA-hukommelsen). Mål: LOD0-KTX2 ≤ 8 MB per figur, LOD1 ≈ 3 MB.
+- **Shading**: nære figurer `MeshStandardMaterial` (normal + ORM) med rim-lys til læsbarhed. Fjerne figurer og horder: LOD2 med kun albedo og `MeshLambertMaterial`/simpel custom shader.
 
 ### 5.3 Palet (udgangspunkt)
 | Rolle | Farver |
@@ -93,8 +95,8 @@ Det betyder:
 | Accent/feedback | blod `#7A0F0C`–`#A3201A`, zombieøjne `#E8C547`, interaktion `#F2D16B`, fare `#D9472B`, gyldig `#7FCB6A` |
 
 ### 5.4 Opdeling i dele (dismemberment)
-- **14 dele som nu** (`torso, head, upperarm_L/R, forearm_L/R, hand_L/R, thigh_L/R, shin_L/R, foot_L/R`), **ét skelet** og merged til én SkinnedMesh med en part-id per vertex og en part-maske i shaderen. Det er samme idé som Valves ellipsoid-maske ([L4D2-paper](https://valvearchive.com/Presentations/GDC%202010/Vlachos-GDC10-Left4Dead2Wounds.pdf)), men med faste dele, som er billigere og mere ensartede.
-- **Snitpunkter med cap**: hals, skulder ×2, albue ×2, hofte ×2, knæ ×2 (+ evt. talje til halv krop senere). Hver cap: kød-disk + knoglering fra gore-atlasset, 40–120 tris, placeret på snitfladen og vægtet 100 % til forælder-knoglen (så den skjules, indtil delen er skåret af).
+- **10 regioner (revideret 18/10 aften)**: `torso, head, upperarm_L/R, lowerarm_L/R (underarm + hånd), thigh_L/R, lowerleg_L/R (skinneben + fod)`, **ét skelet** og **én SkinnedMesh** med region-id per vertex (`_GB_REGION`) og en region-maske i shaderen. Arme og ben kan skydes af på **to niveauer**: kun den nederste del (albue/knæ) eller hele lemmet (skulder/hofte). Hovedet går af ved halsen. Det er samme idé som Valves ellipsoid-maske ([L4D2-paper](https://valvearchive.com/Presentations/GDC%202010/Vlachos-GDC10-Left4Dead2Wounds.pdf)), men med faste dele, som er billigere og mere ensartede.
+- **Snitpunkter med cap**: hals, skulder ×2, albue ×2, hofte ×2, knæ ×2 (+ evt. talje til halv krop senere), alle plane, så kapperne er flade og rene. Hver cap er sin egen node (`NAVN_<region>_cap_<nabo>`, glTF extras `gb_cap/gb_part/gb_neighbour/gb_kind`), 40–120 tris, skjult indtil snittet sker. Scenens extras `gb_dismember` lister for hvert snit regionerne, der falder af, bitmasken, stump-kapperne og kapperne til den afhuggede del. Detaljer: `docs/FORGE_Grok-Bot.md` i AssetForge.
 - **Afskåret del**: CPU-skinnes én gang til en statisk mesh med egen cap (findes: `severPart`), og får simpel fysik/ragdoll-lite.
 - **Pipeline-regel**: part-by-part laver opdeling, caps, skelet og vægte **automatisk** efter samme skabelon på alle humanoider. Image-to-3D giver kun formen.
 - **Maks. knogler**: ≤ 30 per figur (mobil-uniform-grænser og CPU-skinning af afskårne dele).
@@ -131,8 +133,8 @@ Allerede implementeret på den rigtige måde for mobil: part-maske i shaderen + 
 1. **Referencetrin** (allerede i "Nyt asset"): referencer vælges inden for B-retningen (SoD2/WWZ-proportioner, varmt lys).
 2. **Konceptbillede** i stilen: realistiske proportioner, forenklede former, varm palet, neutralt lys.
 3. **Image-to-3D** (Pixal3D/TRELLIS.2 – MIT) giver formen.
-4. **Part-by-part i Blender**: retopologi/decimering til budget, 14-dels opdeling med caps fra skabelonen, skelet, bagning af albedo + AO til 1024²/512², palet-justering mod 5.3, LOD1/LOD2 med automatisk decimering, `intact/damaged/broken` til props.
-5. **Automatisk kvalitetstjek**: trekantbudget, textur-størrelse, antal knogler, ingen svævende dele, caps til stede, palet inden for tolerance → først derefter vises det i editoren.
+4. **Part-by-part i Blender**: high-detail-kilde → ren spil-mesh til budget, 10 regioner med plane snit og caps, skelet, bagning (Cycles) af albedo + normal + AO + ruhed til 2048² (LOD1 1024², LOD2 512²), KTX2-kopier, palet-justering mod 5.3, LOD1/LOD2 med automatisk decimering, `intact/damaged/broken` til props.
+5. **Automatisk kvalitetstjek**: trekantbudget (LOD0 20–30k for helte/NPC'er), tekstursæt og -størrelse, KTX2, 1 draw call i hvilestilling, alle 9 snit med caps, antal knogler, ingen svævende dele, palet inden for tolerance, afspilning og snit i en rigtig browser → først derefter vises det i editoren.
 
 ## 8. Åbne spørgsmål til Jon
 - Er justeringen (Grounded-lys og palet, men realistiske proportioner) i orden, eller skal vi teste A og B side om side på samme zombie i spillet først?
