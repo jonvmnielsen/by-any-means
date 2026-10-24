@@ -68,24 +68,33 @@ Campsite in the forest next to a lake, some distance from the "million city".
 - Zombie counters (global + per zone)
 - Destructibility
 
-## Current Status
-Early prototype: basic mobile-controllable scene, placeholder world, simple zombie counter and movement. Built with Three.js for browser/mobile.
+## Current Status (24 Oct 2026)
+The game is the former **BAM web v4** (built by Claude, moved here from `asset-forge/web/Claude-Desktop_bam_web_v4` on Jon's decision 24/10). The first prototype (campsite by the lake) is kept untouched in `prototype/`.
 
-## Roadmap
-1. Solid mobile controls + third-person camera
-2. Basic shooting + hit reactions
-3. Inventory & backpack
-4. Resource gathering & simple crafting
-5. Base building foundation
-6. Zone system + per-area counters
-7. Larger map streaming
-8. Vehicles, NPCs, events
+What works now (details in `docs/GAME_SYSTEMS.md`):
+- 640 × 640 m world: town, filling station, farm, lake, forest, military base, outposts, roadside; 82 zombies plus hordes
+- Grid inventory (pockets, vest, belt, backpack with their own grids; turn items 90°), searchable containers, loot on the ground, corpses that keep their gear
+- Guns with real magazines and reloading, melee, minigun rig; noise draws zombies
+- Food, water, stamina, bleeding and healing; timed actions with a progress bar
+- Driving (fuel, car damage, zombies attack the car), doors, crouching under things, climbing onto things, digging with a shovel
+- Save game in the browser
 
-## Tech
-- Three.js (CDN / ES modules)
-- Pure frontend (GitHub Pages ready)
-- Mobile-first touch controls
+## Play
+- Online: GitHub Pages for this repo (https://jonvmnielsen.github.io/by-any-means/).
+- Locally: `python -m http.server 8000` in this folder, then open http://localhost:8000 (the data files must be served, not opened from disk).
+- Keys: WASD move, Shift sprint, C crouch, Space jump/climb, E use, I/Tab inventory, R reload, 1/2/3 weapons, M map. Phones get touch controls.
 
----
+## Repository layout
+| Path | What |
+|---|---|
+| `index.html`, `game.js`, `inv.js`, `items.js` | the game (three.js r170, no build step) |
+| `data/` | world layout, heightmap, model packs (glTF JSON with embedded buffers), containers, item models |
+| `chars/`, `gear/` | rigged characters and wearable gear |
+| `icons/`, `sfx/` | inventory icons, sound bank |
+| `assets.lock.json` | which library asset (path + commit) every model in the game comes from |
+| `tools/` | add-on import, item pack builder, headless game test |
+| `docs/` | game systems, style direction, game feel, plans and ideas |
+| `prototype/` | the first prototype, kept as it was |
 
-This is an original project. Genre-inspired only.
+## Assets
+Only assets from `game-assets/library/` are used. The workflow (Jon marks assets in the asset overview → library status → game) is described in `docs/ASSET_WORKFLOW.md`.
