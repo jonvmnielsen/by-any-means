@@ -1,0 +1,648 @@
+{
+ "about": "Claude-Desktop 22-23/10: BAM sound bank, synthesised (no samples). Mono 48 kHz mp3. Gunshots: setting out = close outdoors, far = distant (>150 m), in = indoors; 4 variants each - pick one at random per shot. vehicles: engine_loop loops (playbackRate follows speed).",
+ "groups": {
+  "gunshots": [
+   {
+    "file": "gun_pistol_out_0.mp3",
+    "seconds": 2.642,
+    "weapon": "pistol",
+    "setting": "out",
+    "variant": 0
+   },
+   {
+    "file": "gun_pistol_out_1.mp3",
+    "seconds": 2.64,
+    "weapon": "pistol",
+    "setting": "out",
+    "variant": 1
+   },
+   {
+    "file": "gun_pistol_out_2.mp3",
+    "seconds": 2.64,
+    "weapon": "pistol",
+    "setting": "out",
+    "variant": 2
+   },
+   {
+    "file": "gun_pistol_out_3.mp3",
+    "seconds": 2.644,
+    "weapon": "pistol",
+    "setting": "out",
+    "variant": 3
+   },
+   {
+    "file": "gun_pistol_far_0.mp3",
+    "seconds": 2.637,
+    "weapon": "pistol",
+    "setting": "far",
+    "variant": 0
+   },
+   {
+    "file": "gun_pistol_far_1.mp3",
+    "seconds": 2.639,
+    "weapon": "pistol",
+    "setting": "far",
+    "variant": 1
+   },
+   {
+    "file": "gun_pistol_far_2.mp3",
+    "seconds": 2.639,
+    "weapon": "pistol",
+    "setting": "far",
+    "variant": 2
+   },
+   {
+    "file": "gun_pistol_far_3.mp3",
+    "seconds": 2.64,
+    "weapon": "pistol",
+    "setting": "far",
+    "variant": 3
+   },
+   {
+    "file": "gun_pistol_in_0.mp3",
+    "seconds": 0.788,
+    "weapon": "pistol",
+    "setting": "in",
+    "variant": 0
+   },
+   {
+    "file": "gun_pistol_in_1.mp3",
+    "seconds": 0.79,
+    "weapon": "pistol",
+    "setting": "in",
+    "variant": 1
+   },
+   {
+    "file": "gun_pistol_in_2.mp3",
+    "seconds": 0.799,
+    "weapon": "pistol",
+    "setting": "in",
+    "variant": 2
+   },
+   {
+    "file": "gun_pistol_in_3.mp3",
+    "seconds": 0.799,
+    "weapon": "pistol",
+    "setting": "in",
+    "variant": 3
+   },
+   {
+    "file": "gun_rifle_out_0.mp3",
+    "seconds": 2.642,
+    "weapon": "rifle",
+    "setting": "out",
+    "variant": 0
+   },
+   {
+    "file": "gun_rifle_out_1.mp3",
+    "seconds": 2.663,
+    "weapon": "rifle",
+    "setting": "out",
+    "variant": 1
+   },
+   {
+    "file": "gun_rifle_out_2.mp3",
+    "seconds": 2.655,
+    "weapon": "rifle",
+    "setting": "out",
+    "variant": 2
+   },
+   {
+    "file": "gun_rifle_out_3.mp3",
+    "seconds": 2.671,
+    "weapon": "rifle",
+    "setting": "out",
+    "variant": 3
+   },
+   {
+    "file": "gun_rifle_far_0.mp3",
+    "seconds": 2.673,
+    "weapon": "rifle",
+    "setting": "far",
+    "variant": 0
+   },
+   {
+    "file": "gun_rifle_far_1.mp3",
+    "seconds": 2.679,
+    "weapon": "rifle",
+    "setting": "far",
+    "variant": 1
+   },
+   {
+    "file": "gun_rifle_far_2.mp3",
+    "seconds": 2.665,
+    "weapon": "rifle",
+    "setting": "far",
+    "variant": 2
+   },
+   {
+    "file": "gun_rifle_far_3.mp3",
+    "seconds": 2.657,
+    "weapon": "rifle",
+    "setting": "far",
+    "variant": 3
+   },
+   {
+    "file": "gun_rifle_in_0.mp3",
+    "seconds": 0.815,
+    "weapon": "rifle",
+    "setting": "in",
+    "variant": 0
+   },
+   {
+    "file": "gun_rifle_in_1.mp3",
+    "seconds": 0.812,
+    "weapon": "rifle",
+    "setting": "in",
+    "variant": 1
+   },
+   {
+    "file": "gun_rifle_in_2.mp3",
+    "seconds": 0.807,
+    "weapon": "rifle",
+    "setting": "in",
+    "variant": 2
+   },
+   {
+    "file": "gun_rifle_in_3.mp3",
+    "seconds": 0.811,
+    "weapon": "rifle",
+    "setting": "in",
+    "variant": 3
+   },
+   {
+    "file": "gun_shotgun_out_0.mp3",
+    "seconds": 2.695,
+    "weapon": "shotgun",
+    "setting": "out",
+    "variant": 0
+   },
+   {
+    "file": "gun_shotgun_out_1.mp3",
+    "seconds": 2.698,
+    "weapon": "shotgun",
+    "setting": "out",
+    "variant": 1
+   },
+   {
+    "file": "gun_shotgun_out_2.mp3",
+    "seconds": 2.728,
+    "weapon": "shotgun",
+    "setting": "out",
+    "variant": 2
+   },
+   {
+    "file": "gun_shotgun_out_3.mp3",
+    "seconds": 2.712,
+    "weapon": "shotgun",
+    "setting": "out",
+    "variant": 3
+   },
+   {
+    "file": "gun_shotgun_far_0.mp3",
+    "seconds": 2.702,
+    "weapon": "shotgun",
+    "setting": "far",
+    "variant": 0
+   },
+   {
+    "file": "gun_shotgun_far_1.mp3",
+    "seconds": 2.698,
+    "weapon": "shotgun",
+    "setting": "far",
+    "variant": 1
+   },
+   {
+    "file": "gun_shotgun_far_2.mp3",
+    "seconds": 2.71,
+    "weapon": "shotgun",
+    "setting": "far",
+    "variant": 2
+   },
+   {
+    "file": "gun_shotgun_far_3.mp3",
+    "seconds": 2.706,
+    "weapon": "shotgun",
+    "setting": "far",
+    "variant": 3
+   },
+   {
+    "file": "gun_shotgun_in_0.mp3",
+    "seconds": 0.901,
+    "weapon": "shotgun",
+    "setting": "in",
+    "variant": 0
+   },
+   {
+    "file": "gun_shotgun_in_1.mp3",
+    "seconds": 0.907,
+    "weapon": "shotgun",
+    "setting": "in",
+    "variant": 1
+   },
+   {
+    "file": "gun_shotgun_in_2.mp3",
+    "seconds": 0.925,
+    "weapon": "shotgun",
+    "setting": "in",
+    "variant": 2
+   },
+   {
+    "file": "gun_shotgun_in_3.mp3",
+    "seconds": 0.884,
+    "weapon": "shotgun",
+    "setting": "in",
+    "variant": 3
+   },
+   {
+    "file": "gun_sniper_out_0.mp3",
+    "seconds": 2.676,
+    "weapon": "sniper",
+    "setting": "out",
+    "variant": 0
+   },
+   {
+    "file": "gun_sniper_out_1.mp3",
+    "seconds": 2.693,
+    "weapon": "sniper",
+    "setting": "out",
+    "variant": 1
+   },
+   {
+    "file": "gun_sniper_out_2.mp3",
+    "seconds": 2.7,
+    "weapon": "sniper",
+    "setting": "out",
+    "variant": 2
+   },
+   {
+    "file": "gun_sniper_out_3.mp3",
+    "seconds": 2.692,
+    "weapon": "sniper",
+    "setting": "out",
+    "variant": 3
+   },
+   {
+    "file": "gun_sniper_far_0.mp3",
+    "seconds": 2.713,
+    "weapon": "sniper",
+    "setting": "far",
+    "variant": 0
+   },
+   {
+    "file": "gun_sniper_far_1.mp3",
+    "seconds": 2.712,
+    "weapon": "sniper",
+    "setting": "far",
+    "variant": 1
+   },
+   {
+    "file": "gun_sniper_far_2.mp3",
+    "seconds": 2.686,
+    "weapon": "sniper",
+    "setting": "far",
+    "variant": 2
+   },
+   {
+    "file": "gun_sniper_far_3.mp3",
+    "seconds": 2.687,
+    "weapon": "sniper",
+    "setting": "far",
+    "variant": 3
+   },
+   {
+    "file": "gun_sniper_in_0.mp3",
+    "seconds": 0.866,
+    "weapon": "sniper",
+    "setting": "in",
+    "variant": 0
+   },
+   {
+    "file": "gun_sniper_in_1.mp3",
+    "seconds": 0.877,
+    "weapon": "sniper",
+    "setting": "in",
+    "variant": 1
+   },
+   {
+    "file": "gun_sniper_in_2.mp3",
+    "seconds": 0.86,
+    "weapon": "sniper",
+    "setting": "in",
+    "variant": 2
+   },
+   {
+    "file": "gun_sniper_in_3.mp3",
+    "seconds": 0.867,
+    "weapon": "sniper",
+    "setting": "in",
+    "variant": 3
+   }
+  ],
+  "gun_handling": [
+   {
+    "file": "dry_fire.mp3",
+    "seconds": 0.04
+   },
+   {
+    "file": "rifle_mag_out.mp3",
+    "seconds": 0.14
+   },
+   {
+    "file": "rifle_mag_in.mp3",
+    "seconds": 0.14
+   },
+   {
+    "file": "rifle_charge.mp3",
+    "seconds": 0.24
+   },
+   {
+    "file": "pistol_slide.mp3",
+    "seconds": 0.16
+   },
+   {
+    "file": "shotgun_pump.mp3",
+    "seconds": 0.34
+   },
+   {
+    "file": "shotgun_shell_in.mp3",
+    "seconds": 0.07
+   },
+   {
+    "file": "sniper_bolt.mp3",
+    "seconds": 0.46
+   },
+   {
+    "file": "casing_ground.mp3",
+    "seconds": 0.358
+   }
+  ],
+  "footsteps": [
+   {
+    "file": "step_grass_0.mp3",
+    "seconds": 0.16,
+    "surface": "grass",
+    "variant": 0
+   },
+   {
+    "file": "step_grass_1.mp3",
+    "seconds": 0.16,
+    "surface": "grass",
+    "variant": 1
+   },
+   {
+    "file": "step_grass_2.mp3",
+    "seconds": 0.16,
+    "surface": "grass",
+    "variant": 2
+   },
+   {
+    "file": "step_grass_3.mp3",
+    "seconds": 0.16,
+    "surface": "grass",
+    "variant": 3
+   },
+   {
+    "file": "step_gravel_0.mp3",
+    "seconds": 0.118,
+    "surface": "gravel",
+    "variant": 0
+   },
+   {
+    "file": "step_gravel_1.mp3",
+    "seconds": 0.124,
+    "surface": "gravel",
+    "variant": 1
+   },
+   {
+    "file": "step_gravel_2.mp3",
+    "seconds": 0.118,
+    "surface": "gravel",
+    "variant": 2
+   },
+   {
+    "file": "step_gravel_3.mp3",
+    "seconds": 0.133,
+    "surface": "gravel",
+    "variant": 3
+   },
+   {
+    "file": "step_asphalt_0.mp3",
+    "seconds": 0.08,
+    "surface": "asphalt",
+    "variant": 0
+   },
+   {
+    "file": "step_asphalt_1.mp3",
+    "seconds": 0.08,
+    "surface": "asphalt",
+    "variant": 1
+   },
+   {
+    "file": "step_asphalt_2.mp3",
+    "seconds": 0.08,
+    "surface": "asphalt",
+    "variant": 2
+   },
+   {
+    "file": "step_asphalt_3.mp3",
+    "seconds": 0.08,
+    "surface": "asphalt",
+    "variant": 3
+   },
+   {
+    "file": "step_wood_0.mp3",
+    "seconds": 0.16,
+    "surface": "wood",
+    "variant": 0
+   },
+   {
+    "file": "step_wood_1.mp3",
+    "seconds": 0.16,
+    "surface": "wood",
+    "variant": 1
+   },
+   {
+    "file": "step_wood_2.mp3",
+    "seconds": 0.16,
+    "surface": "wood",
+    "variant": 2
+   },
+   {
+    "file": "step_wood_3.mp3",
+    "seconds": 0.16,
+    "surface": "wood",
+    "variant": 3
+   },
+   {
+    "file": "step_metal_0.mp3",
+    "seconds": 0.3,
+    "surface": "metal",
+    "variant": 0
+   },
+   {
+    "file": "step_metal_1.mp3",
+    "seconds": 0.3,
+    "surface": "metal",
+    "variant": 1
+   },
+   {
+    "file": "step_metal_2.mp3",
+    "seconds": 0.3,
+    "surface": "metal",
+    "variant": 2
+   },
+   {
+    "file": "step_metal_3.mp3",
+    "seconds": 0.3,
+    "surface": "metal",
+    "variant": 3
+   }
+  ],
+  "zombies": [
+   {
+    "file": "zombie_groan_0.mp3",
+    "seconds": 4.733
+   },
+   {
+    "file": "zombie_groan_1.mp3",
+    "seconds": 4.15
+   },
+   {
+    "file": "zombie_groan_2.mp3",
+    "seconds": 4.634
+   },
+   {
+    "file": "zombie_groan_3.mp3",
+    "seconds": 4.545
+   },
+   {
+    "file": "zombie_groan_4.mp3",
+    "seconds": 4.222
+   },
+   {
+    "file": "zombie_groan_5.mp3",
+    "seconds": 4.389
+   },
+   {
+    "file": "zombie_attack_0.mp3",
+    "seconds": 3.307
+   },
+   {
+    "file": "zombie_attack_1.mp3",
+    "seconds": 3.16
+   },
+   {
+    "file": "zombie_attack_2.mp3",
+    "seconds": 3.4
+   },
+   {
+    "file": "zombie_hit_0.mp3",
+    "seconds": 0.35
+   },
+   {
+    "file": "zombie_death_0.mp3",
+    "seconds": 3.87
+   },
+   {
+    "file": "zombie_hit_1.mp3",
+    "seconds": 0.35
+   },
+   {
+    "file": "zombie_death_1.mp3",
+    "seconds": 3.876
+   }
+  ],
+  "melee": [
+   {
+    "file": "swing_0.mp3",
+    "seconds": 0.25
+   },
+   {
+    "file": "punch_hit_0.mp3",
+    "seconds": 0.12
+   },
+   {
+    "file": "swing_1.mp3",
+    "seconds": 0.25
+   },
+   {
+    "file": "punch_hit_1.mp3",
+    "seconds": 0.12
+   },
+   {
+    "file": "swing_2.mp3",
+    "seconds": 0.25
+   },
+   {
+    "file": "punch_hit_2.mp3",
+    "seconds": 0.12
+   },
+   {
+    "file": "player_hurt_0.mp3",
+    "seconds": 0.4
+   },
+   {
+    "file": "player_hurt_1.mp3",
+    "seconds": 0.4
+   }
+  ],
+  "world": [
+   {
+    "file": "search_rummage.mp3",
+    "seconds": 2.0
+   },
+   {
+    "file": "crate_open.mp3",
+    "seconds": 0.65
+   },
+   {
+    "file": "metal_locker_open.mp3",
+    "seconds": 0.6
+   },
+   {
+    "file": "door_open.mp3",
+    "seconds": 0.8
+   },
+   {
+    "file": "door_close.mp3",
+    "seconds": 0.3
+   },
+   {
+    "file": "item_pickup.mp3",
+    "seconds": 0.25
+   },
+   {
+    "file": "ambient_wind_loop.mp3",
+    "seconds": 20.0
+   }
+  ],
+  "vehicles": [
+   {
+    "file": "engine_loop.mp3",
+    "seconds": 2.0,
+    "loop": true
+   },
+   {
+    "file": "engine_start.mp3",
+    "seconds": 2.2
+   },
+   {
+    "file": "engine_stop.mp3",
+    "seconds": 0.873
+   },
+   {
+    "file": "car_door.mp3",
+    "seconds": 0.35
+   },
+   {
+    "file": "car_crash.mp3",
+    "seconds": 0.8
+   },
+   {
+    "file": "zombie_thud.mp3",
+    "seconds": 0.25
+   }
+  ]
+ }
+}
